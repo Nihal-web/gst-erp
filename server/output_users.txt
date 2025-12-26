@@ -1,4 +1,0 @@
-﻿[dotenv@17.2.3] injecting env (5) from .env -- tip: ΓÜÖ∩╕Å  suppress all logs with { quiet: true }
---- ALL USERS ---
-{"id":"498d4ae4-6a36-4e9b-85f6-ef790285492e","email":"nihalyt789@gmail.com","role":"ADMIN","status":"active"}
-{"id":"9096cb25-7f39-45a0-b32f-2894a9990911","email":"nihalvarshney666@gmail.com","role":"PLATFORM_ADMIN","status":"active"}
