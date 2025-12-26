@@ -1,0 +1,3 @@
+﻿[dotenv@17.2.3] injecting env (5) from .env -- tip: ≡ƒöÉ prevent committing .env to code: https://dotenvx.com/precommit
+Invoices: []
+Calculated Total: 0

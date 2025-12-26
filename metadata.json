@@ -1,0 +1,7 @@
+{
+  "name": "GST-Master ERP",
+  "description": "A comprehensive cloud-based GST Billing and Inventory Management System with automated HSN lookup, tax intelligence, and professional A4 invoice generation.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
