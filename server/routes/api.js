@@ -90,7 +90,7 @@ const mapStockLog = (row) => ({
 // --- CUSTOMERS ---
 router.get('/customers', async (req, res) => {
     try {
-        const { rows } = await db.query('SELECT * FROM customers WHERE tenant_id = ? ORDER BY created_at DESC', [req.tenantId]);
+        const { rows } = await db.query('SELECT * FROM customers WHERE tenant_id = $1 ORDER BY created_at DESC', [req.tenantId]);
         res.json(rows.map(mapCustomer));
     } catch (err) {
         console.error('Error fetching customers:', err);
@@ -104,10 +104,10 @@ router.post('/customers', async (req, res) => {
         const id = crypto.randomUUID();
         await db.query(
             `INSERT INTO customers (id, tenant_id, name, address, phone, gstin, state, state_code, country, status) 
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')`,
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'active')`,
             [id, req.tenantId, name, address, phone, gstin, state, stateCode, country || 'India']
         );
-        const { rows } = await db.query('SELECT * FROM customers WHERE id = ?', [id]);
+        const { rows } = await db.query('SELECT * FROM customers WHERE id = $1', [id]);
         res.status(201).json(mapCustomer(rows[0]));
     } catch (err) {
         console.error('Error creating customer:', err);
@@ -118,7 +118,7 @@ router.post('/customers', async (req, res) => {
 // --- INVENTORY ---
 router.get('/inventory', async (req, res) => {
     try {
-        const { rows } = await db.query('SELECT * FROM inventory WHERE tenant_id = ? ORDER BY created_at DESC', [req.tenantId]);
+        const { rows } = await db.query('SELECT * FROM inventory WHERE tenant_id = $1 ORDER BY created_at DESC', [req.tenantId]);
         res.json(rows.map(mapProduct));
     } catch (err) {
         console.error('Error fetching inventory:', err);
@@ -132,10 +132,10 @@ router.post('/inventory', async (req, res) => {
         const id = crypto.randomUUID();
         await db.query(
             `INSERT INTO inventory (id, tenant_id, name, hsn, sac, rate, unit, stock, gst_percent, status) 
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')`,
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'active')`,
             [id, req.tenantId, name, hsn, sac || null, rate, unit, stock, gstPercent]
         );
-        const { rows } = await db.query('SELECT * FROM inventory WHERE id = ?', [id]);
+        const { rows } = await db.query('SELECT * FROM inventory WHERE id = $1', [id]);
         res.status(201).json(mapProduct(rows[0]));
     } catch (err) {
         console.error('Error creating product:', err);
@@ -150,7 +150,7 @@ router.get('/stock-logs', async (req, res) => {
             SELECT sl.*, u.name as user_name 
             FROM stock_logs sl 
             JOIN users u ON sl.tenant_id = u.id 
-            WHERE sl.tenant_id = ? 
+            WHERE sl.tenant_id = $1 
             ORDER BY sl.created_at DESC LIMIT 100`, [req.tenantId]);
         res.json(rows.map(mapStockLog));
     } catch (err) {
@@ -165,14 +165,14 @@ router.post('/inventory/adjust', async (req, res) => {
     try {
         await connection.beginTransaction();
 
-        await connection.query('UPDATE inventory SET stock = stock + ? WHERE id = ? AND tenant_id = ?', [delta, productId, req.tenantId]);
+        await connection.query('UPDATE inventory SET stock = stock + $1 WHERE id = $2 AND tenant_id = $3', [delta, productId, req.tenantId]);
 
-        const { rows: prod } = await connection.query('SELECT name FROM inventory WHERE id = ? AND tenant_id = ?', [productId, req.tenantId]);
+        const { rows: prod } = await connection.query('SELECT name FROM inventory WHERE id = $1 AND tenant_id = $2', [productId, req.tenantId]);
         const prodName = prod[0]?.name || 'Unknown Item';
 
         await connection.query(`
             INSERT INTO stock_logs (id, tenant_id, product_id, product_name, change_amt, reason, date)
-            VALUES (?, ?, ?, ?, ?, ?, ?)`,
+            VALUES ($1, $2, $3, $4, $5, $6, $7)`,
             [crypto.randomUUID(), req.tenantId, productId, prodName, delta, reason, new Date().toLocaleString()]
         );
 
@@ -189,7 +189,7 @@ router.post('/inventory/adjust', async (req, res) => {
 
 router.get('/settings', async (req, res) => {
     try {
-        const { rows } = await db.query('SELECT * FROM firm_settings WHERE tenant_id = ?', [req.tenantId]);
+        const { rows } = await db.query('SELECT * FROM firm_settings WHERE tenant_id = $1', [req.tenantId]);
         res.json(mapSettings(rows[0]));
     } catch (err) {
         console.error('Error fetching settings:', err);
@@ -204,14 +204,12 @@ router.post('/settings', async (req, res) => {
             INSERT INTO firm_settings (
                 tenant_id, name, tagline, address, pan, gstin, phone, email, web, 
                 bank_name, bank_branch, acc_number, ifsc, upi_id, terms, state, state_code, declaration
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ON DUPLICATE KEY UPDATE 
-                name=?, tagline=?, address=?, pan=?, gstin=?, phone=?, email=?, web=?, 
-                bank_name=?, bank_branch=?, acc_number=?, ifsc=?, upi_id=?, terms=?, state=?, state_code=?, declaration=?`,
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+            ON CONFLICT (tenant_id) DO UPDATE SET 
+                name=$2, tagline=$3, address=$4, pan=$5, gstin=$6, phone=$7, email=$8, web=$9, 
+                bank_name=$10, bank_branch=$11, acc_number=$12, ifsc=$13, upi_id=$14, terms=$15, state=$16, state_code=$17, declaration=$18`,
             [
                 req.tenantId, s.name, s.tagline, s.address, s.pan, s.gstin, s.phone, s.email, s.web,
-                s.bankName, s.bankBranch, s.accNumber, s.ifsc, s.upiId, JSON.stringify(s.terms || []), s.state, s.stateCode, s.declaration,
-                s.name, s.tagline, s.address, s.pan, s.gstin, s.phone, s.email, s.web,
                 s.bankName, s.bankBranch, s.accNumber, s.ifsc, s.upiId, JSON.stringify(s.terms || []), s.state, s.stateCode, s.declaration
             ]
         );
@@ -229,7 +227,7 @@ router.get('/invoices', async (req, res) => {
             SELECT i.*, c.name as customer_name, c.gstin as customer_gstin, c.address as customer_address, c.state as customer_state, c.state_code as customer_state_code
             FROM invoices i
             JOIN customers c ON i.customer_id = c.id
-            WHERE i.tenant_id = ?
+            WHERE i.tenant_id = $1
             ORDER BY i.created_at DESC`, [req.tenantId]);
         res.json(rows.map(mapInvoice));
     } catch (err) {
@@ -251,7 +249,7 @@ router.post('/invoices', async (req, res) => {
                 id, tenant_id, customer_id, invoice_no, type, date, total_taxable, 
                 igst, cgst, sgst, total_amount, is_paid, is_reverse_charge, 
                 export_type, shipping_bill_no, shipping_bill_date
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)`,
             [
                 invId,
                 req.tenantId,
@@ -276,7 +274,7 @@ router.post('/invoices', async (req, res) => {
             await connection.query(`
                 INSERT INTO invoice_items (
                     invoice_id, product_id, product_name, hsn, sac, qty, rate, unit, taxable_value, gst_percent
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
                 [
                     invId, item.productId || null, item.productName, item.hsn || null, item.sac || null,
                     item.qty, item.rate, item.unit, item.taxableValue, item.gstPercent
@@ -286,13 +284,13 @@ router.post('/invoices', async (req, res) => {
             // Stock update logic
             if (item.productId) {
                 await connection.query(
-                    'UPDATE inventory SET stock = stock - ? WHERE id = ? AND tenant_id = ?',
+                    'UPDATE inventory SET stock = stock - $1 WHERE id = $2 AND tenant_id = $3',
                     [item.qty, item.productId, req.tenantId]
                 );
 
                 await connection.query(`
                     INSERT INTO stock_logs (id, tenant_id, product_id, product_name, change_amt, reason, date)
-                    VALUES (?, ?, ?, ?, ?, ?, ?)`,
+                    VALUES ($1, $2, $3, $4, $5, $6, $7)`,
                     [crypto.randomUUID(), req.tenantId, item.productId, item.productName, -item.qty, `Invoice ${inv.invoiceNo}`, inv.date]
                 );
             }

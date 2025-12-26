@@ -28,7 +28,7 @@ router.post('/toggle-status', isPlatformAdmin, async (req, res) => {
     else return res.status(400).json({ error: 'Invalid entity type' });
 
     try {
-        await db.query(`UPDATE ${table} SET status = ? WHERE id = ?`, [status, id]);
+        await db.query(`UPDATE ${table} SET status = $1 WHERE id = $2`, [status, id]);
         res.json({ success: true, status });
     } catch (err) {
         console.error('Toggle status error:', err);
@@ -44,7 +44,7 @@ router.get('/stats', isPlatformAdmin, async (req, res) => {
         const { rows: users } = await db.query('SELECT * FROM users ORDER BY created_at DESC');
         console.log(`[DEBUG] Found ${users.length} users`);
 
-        const { rows: shops } = await db.query('SELECT * FROM users WHERE role = "ADMIN"');
+        const { rows: shops } = await db.query("SELECT * FROM users WHERE role = 'ADMIN'");
         console.log(`[DEBUG] Found ${shops.length} shops`);
 
         const { rows: invoices } = await db.query('SELECT * FROM invoices');
@@ -100,9 +100,9 @@ router.get('/stats', isPlatformAdmin, async (req, res) => {
 router.get('/tenants/:tenantId/data', isPlatformAdmin, async (req, res) => {
     const { tenantId } = req.params;
     try {
-        const { rows: products } = await db.query('SELECT * FROM inventory WHERE tenant_id = ?', [tenantId]);
-        const { rows: customers } = await db.query('SELECT * FROM customers WHERE tenant_id = ?', [tenantId]);
-        const { rows: invoices } = await db.query('SELECT * FROM invoices WHERE tenant_id = ?', [tenantId]);
+        const { rows: products } = await db.query('SELECT * FROM inventory WHERE tenant_id = $1', [tenantId]);
+        const { rows: customers } = await db.query('SELECT * FROM customers WHERE tenant_id = $1', [tenantId]);
+        const { rows: invoices } = await db.query('SELECT * FROM invoices WHERE tenant_id = $1', [tenantId]);
         res.json({ products, customers, invoices });
     } catch (err) {
         res.status(500).json({ error: 'Failed to fetch tenant data' });
@@ -116,7 +116,7 @@ router.delete('/tenants/:tenantId/:entity/:id', isPlatformAdmin, async (req, res
     if (!allowedEntities.includes(entity)) return res.status(400).json({ error: 'Invalid entity' });
 
     try {
-        await db.query(`DELETE FROM ${entity} WHERE id = ? AND tenant_id = ?`, [id, tenantId]);
+        await db.query(`DELETE FROM ${entity} WHERE id = $1 AND tenant_id = $2`, [id, tenantId]);
         res.json({ success: true });
     } catch (err) {
         res.status(500).json({ error: 'Failed to delete record' });
@@ -126,7 +126,7 @@ router.delete('/tenants/:tenantId/:entity/:id', isPlatformAdmin, async (req, res
 // Get Settings for a specific Shop
 router.get('/shop-settings/:tenantId', isPlatformAdmin, async (req, res) => {
     try {
-        const { rows } = await db.query('SELECT * FROM firm_settings WHERE tenant_id = ?', [req.params.tenantId]);
+        const { rows } = await db.query('SELECT * FROM firm_settings WHERE tenant_id = $1', [req.params.tenantId]);
         res.json(rows[0] || {});
     } catch (err) {
         console.error('Error fetching shop settings:', err);
@@ -143,14 +143,12 @@ router.post('/shop-settings/:tenantId', isPlatformAdmin, async (req, res) => {
             INSERT INTO firm_settings (
                 tenant_id, name, tagline, address, pan, gstin, phone, email, web, 
                 bank_name, bank_branch, acc_number, ifsc, upi_id, terms, state, state_code, declaration
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ON DUPLICATE KEY UPDATE 
-                name=?, tagline=?, address=?, pan=?, gstin=?, phone=?, email=?, web=?, 
-                bank_name=?, bank_branch=?, acc_number=?, ifsc=?, upi_id=?, terms=?, state=?, state_code=?, declaration=?`,
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+            ON CONFLICT (tenant_id) DO UPDATE SET 
+                name=$2, tagline=$3, address=$4, pan=$5, gstin=$6, phone=$7, email=$8, web=$9, 
+                bank_name=$10, bank_branch=$11, acc_number=$12, ifsc=$13, upi_id=$14, terms=$15, state=$16, state_code=$17, declaration=$18`,
             [
                 tenantId, s.name, s.tagline, s.address, s.pan, s.gstin, s.phone, s.email, s.web,
-                s.bankName, s.bankBranch, s.accNumber, s.ifsc, s.upiId, JSON.stringify(s.terms || []), s.state, s.stateCode, s.declaration,
-                s.name, s.tagline, s.address, s.pan, s.gstin, s.phone, s.email, s.web,
                 s.bankName, s.bankBranch, s.accNumber, s.ifsc, s.upiId, JSON.stringify(s.terms || []), s.state, s.stateCode, s.declaration
             ]
         );
@@ -165,7 +163,7 @@ router.post('/shop-settings/:tenantId', isPlatformAdmin, async (req, res) => {
 router.post('/toggle-system', isPlatformAdmin, async (req, res) => {
     const { name, value } = req.body;
     try {
-        await db.query('UPDATE system_settings SET value = ? WHERE name = ?', [value.toString(), name]);
+        await db.query('UPDATE system_settings SET value = $1 WHERE name = $2', [value.toString(), name]);
         res.json({ success: true, name, value });
     } catch (err) {
         console.error('Toggle system error:', err);

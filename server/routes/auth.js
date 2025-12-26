@@ -23,10 +23,10 @@ router.post('/login', async (req, res) => {
     const { email, password } = req.body;
     try {
         // Platform Maintenance Check
-        const { rows: maintRows } = await db.query('SELECT value FROM system_settings WHERE name = "maintenance_mode"');
+        const { rows: maintRows } = await db.query("SELECT value FROM system_settings WHERE name = 'maintenance_mode'");
         const isMaintenance = maintRows[0]?.value === 'true';
 
-        const { rows } = await db.query('SELECT * FROM users WHERE email = ?', [email]);
+        const { rows } = await db.query('SELECT * FROM users WHERE email = $1', [email]);
         const user = rows[0];
 
         if (!user) {
@@ -64,7 +64,7 @@ router.post('/signup', async (req, res) => {
     const { email, password, name, shopName } = req.body;
     try {
         // Signups Allowed Check
-        const { rows: signupRows } = await db.query('SELECT value FROM system_settings WHERE name = "signups_enabled"');
+        const { rows: signupRows } = await db.query("SELECT value FROM system_settings WHERE name = 'signups_enabled'");
         const isSignupEnabled = signupRows[0]?.value === 'true';
 
         if (!isSignupEnabled) {
@@ -72,7 +72,7 @@ router.post('/signup', async (req, res) => {
         }
 
         // Check if user exists
-        const { rows: existing } = await db.query('SELECT id FROM users WHERE email = ?', [email]);
+        const { rows: existing } = await db.query('SELECT id FROM users WHERE email = $1', [email]);
         if (existing.length > 0) {
             return res.status(400).json({ error: 'Email already registered' });
         }
@@ -90,12 +90,12 @@ router.post('/signup', async (req, res) => {
 
         await db.query(
             `INSERT INTO users (id, email, password_hash, name, role, shop_name, status, plan) 
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
             [id, email, passwordHash, name, assignedRole, shopName || 'My Shop', 'active', 'pro']
         );
 
         // Fetch created user
-        const { rows: newUsers } = await db.query('SELECT * FROM users WHERE id = ?', [id]);
+        const { rows: newUsers } = await db.query('SELECT * FROM users WHERE id = $1', [id]);
         const user = newUsers[0];
 
         const token = jwt.sign({ id: user.id, email: user.email, role: user.role }, SECRET_KEY, { expiresIn: '24h' });
