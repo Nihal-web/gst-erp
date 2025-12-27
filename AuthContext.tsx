@@ -50,16 +50,47 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const { data, error } = await supabase
         .from('users')
         .select('*')
-        .eq('id', userId)
+        .eq('id', userId) // Check by Auth ID first
         .single();
 
       if (data) {
-        setUser({ ...data, email }); // Ensure email from auth is used if needed
+        setUser({ ...data, email });
       } else {
-        // Fallback if public user record doesn't exist yet (latency)
-        setUser({
+        // ID mismatch? Check if legacy user exists by email
+        const { data: legacyUser } = await supabase
+          .from('users')
+          .select('*')
+          .eq('email', email)
+          .single();
+
+        if (legacyUser) {
+          console.log("Found legacy user, migrating to new Auth ID...", legacyUser);
+          // Migrate legacy record to new Auth ID
+          const { data: migrated, error: migrateError } = await supabase
+            .from('users')
+            .update({ id: userId }) // Update DB ID to match Auth ID
+            .eq('email', email)
+            .select()
+            .single();
+
+          if (migrated) {
+            setUser({ ...migrated, email });
+            return;
+          } else {
+            console.error("Migration failed", migrateError);
+          }
+        }
+
+        // If no legacy user, or migration failed, create new
+        // Fallback/Init
+        const newUser = {
           id: userId, email, name: 'User', role: UserRole.ADMIN, shopName: 'My Shop', status: 'active', plan: 'free'
-        } as User);
+        };
+
+        // Try inserting to persist
+        await supabase.from('users').insert([newUser]);
+
+        setUser(newUser as User);
       }
     } catch (e) {
       console.error("Profile fetch error", e);
