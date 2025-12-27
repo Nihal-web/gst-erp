@@ -1,6 +1,6 @@
 
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { Product, Customer, Invoice, FirmSettings, User, UserRole, StockLog } from './types';
+import { Product, Customer, Invoice, FirmSettings, User, UserRole, StockLog, Warehouse } from './types';
 import {
   fetchCustomers, createCustomer,
   fetchProducts, createProduct,
@@ -24,14 +24,18 @@ interface AppContextType {
   invoices: Invoice[];
   stockLogs: StockLog[];
   firm: FirmSettings;
+  warehouses: Warehouse[];
   globalStats?: GlobalStats;
   addInvoice: (invoice: Invoice) => Promise<void>;
   updateProduct: (product: Product) => void;
   addProduct: (product: Product) => Promise<void>;
+  deleteProduct: (id: string) => void;
   adjustStock: (productId: string, delta: number, reason: string) => void;
   updateCustomer: (customer: Customer) => void;
   addCustomer: (customer: Customer) => Promise<void>;
   setFirm: (settings: FirmSettings) => Promise<void>;
+  addWarehouse: (warehouse: Warehouse) => void;
+  deleteWarehouse: (id: string) => void;
   showAlert: (message: string, type?: 'success' | 'error' | 'info') => void;
   refreshData: () => void;
 }
@@ -45,6 +49,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [stockLogs, setStockLogs] = useState<StockLog[]>([]);
+  const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [firm, setFirm] = useState<FirmSettings>(DEFAULT_FIRM_SETTINGS);
   const [alert, setAlert] = useState<{ message: string; type: string } | null>(null);
   const [globalStats, setGlobalStats] = useState<GlobalStats | undefined>(undefined);
@@ -165,15 +170,32 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     showAlert('Inventory updated locally.', 'success');
   };
 
+  const deleteProduct = (id: string) => {
+    setProducts(prev => prev.filter(p => p.id !== id));
+    showAlert('Product removed from inventory.', 'info');
+  };
+
   const updateCustomer = (customer: Customer) => {
     setCustomers(prev => prev.map(c => (c.id === customer.id ? customer : c)));
     showAlert('Customer profile updated locally.', 'success');
   };
 
+  const addWarehouse = (warehouse: Warehouse) => {
+    setWarehouses(prev => [...prev, warehouse]);
+    showAlert(`Warehouse ${warehouse.name} added.`, 'success');
+  };
+
+  const deleteWarehouse = (id: string) => {
+    setWarehouses(prev => prev.filter(w => w.id !== id));
+    showAlert('Warehouse removed.', 'info');
+  };
+
   return (
     <AppContext.Provider value={{
       products, customers, invoices, stockLogs, firm, globalStats,
-      addInvoice, updateProduct, addProduct, adjustStock, updateCustomer, addCustomer, setFirm: handleSetFirm, showAlert,
+      warehouses,
+      addInvoice, updateProduct, addProduct, deleteProduct, adjustStock, updateCustomer, addCustomer, setFirm: handleSetFirm, showAlert,
+      addWarehouse, deleteWarehouse,
       refreshData: loadData
     }}>
       {children}

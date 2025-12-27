@@ -33,6 +33,7 @@ export interface User {
 
 export interface Product {
   id: string;
+  warehouseId?: string;
   name: string;
   hsn: string;
   sac?: string;
@@ -40,6 +41,14 @@ export interface Product {
   unit: string;
   stock: number;
   gstPercent: number;
+}
+
+export interface Warehouse {
+  id: string;
+  name: string;
+  location: string;
+  capability: string; // 'Storage', 'Distribution', 'Cold Storage'
+  manager?: string;
 }
 
 export interface StockLog {

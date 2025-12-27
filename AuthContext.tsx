@@ -1,7 +1,8 @@
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { User, UserRole } from './types';
-import { loginUser, signupUser } from './services/apiService';
+import { supabase } from './supabaseClient';
+// import { loginUser, signupUser } from './services/apiService'; // Deprecated
 
 interface AuthContextType {
   user: User | null;
@@ -22,47 +23,93 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    const savedSession = localStorage.getItem(CURRENT_USER_KEY);
-    if (savedSession) {
-      setUser(JSON.parse(savedSession));
-    }
-    setIsLoading(false);
+    // Check active session
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user) {
+        fetchProfile(session.user.id, session.user.email!);
+      } else {
+        setIsLoading(false);
+      }
+    });
+
+    // Listen for changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session?.user) {
+        fetchProfile(session.user.id, session.user.email!);
+      } else {
+        setUser(null);
+        setIsLoading(false);
+      }
+    });
+
+    return () => subscription.unsubscribe();
   }, []);
 
-  const login = async (email: string, password: string) => {
+  const fetchProfile = async (userId: string, email: string) => {
     try {
-      const { user, token } = await loginUser(email, password);
-      setUser(user);
-      localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(user));
-      localStorage.setItem('auth_token', token);
+      const { data, error } = await supabase
+        .from('users')
+        .select('*')
+        .eq('id', userId)
+        .single();
+
+      if (data) {
+        setUser({ ...data, email }); // Ensure email from auth is used if needed
+      } else {
+        // Fallback if public user record doesn't exist yet (latency)
+        setUser({
+          id: userId, email, name: 'User', role: UserRole.ADMIN, shopName: 'My Shop', status: 'active', plan: 'free'
+        } as User);
+      }
     } catch (e) {
-      throw e;
+      console.error("Profile fetch error", e);
+    } finally {
+      setIsLoading(false);
     }
+  };
+
+  const login = async (email: string, password: string) => {
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) throw new Error(error.message);
   };
 
   const signup = async (email: string, password: string, name: string, shopName: string, role: UserRole) => {
-    try {
-      const { user, token } = await signupUser(email, password, name, shopName, role);
-      setUser(user);
-      localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(user));
-      localStorage.setItem('auth_token', token);
-    } catch (e) {
-      throw e;
+    const { data, error } = await supabase.auth.signUp({
+      email, password,
+      options: {
+        data: { name, shop_name: shopName, role } // Store metadata for trigger
+      }
+    });
+    if (error) throw new Error(error.message);
+
+    // Manually insert into public.users if trigger isn't set up
+    if (data.user) {
+      const newUser = {
+        id: data.user.id,
+        email,
+        name,
+        role,
+        shop_name: shopName,
+        status: 'active',
+        plan: 'pro'
+      };
+
+      const { error: dbError } = await supabase.from('users').insert([newUser]);
+      if (dbError) console.error("Failed to create public user record", dbError);
+
+      setUser(newUser as unknown as User);
     }
   };
 
-  const logout = () => {
+  const logout = async () => {
+    await supabase.auth.signOut();
     setUser(null);
     localStorage.removeItem(CURRENT_USER_KEY);
   };
 
   const switchRole = (role: UserRole) => {
     if (!user) return;
-    // Note: In a production app, you would check if the ORIGINAL role was PLATFORM_ADMIN
-    // For this prototype, we update the session user's role
-    const updatedUser = { ...user, role };
-    setUser(updatedUser);
-    localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(updatedUser));
+    setUser({ ...user, role });
   };
 
   return (

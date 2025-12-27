@@ -7,6 +7,7 @@ import {
 import { useNavigate } from 'react-router-dom';
 import { formatCurrency } from '../utils/helpers';
 import { useAuth } from '../AuthContext';
+import { useApp } from '../AppContext';
 import { UserRole } from '../types';
 
 const invoiceData = [
@@ -41,9 +42,41 @@ const StatCard: React.FC<{
 
 const Dashboard: React.FC = () => {
   const { user } = useAuth();
+  const { invoices } = useApp();
   const navigate = useNavigate();
+  const [viewMode, setViewMode] = useState<'week' | 'month'>('week');
 
   const isAccountant = user?.role === UserRole.ACCOUNTANT;
+
+  // Calculate real stats
+  const totalSales = invoices.reduce((sum, inv) => sum + inv.totalAmount, 0);
+  const pendingAmount = invoices.filter(inv => !inv.isPaid).reduce((sum, inv) => sum + inv.totalAmount, 0);
+  // Assuming 70% is cost for profit calculation (mock logic until expense tracking is added)
+  const estimatedProfit = totalSales * 0.3;
+  const expenses = totalSales * 0.7; // Mock expenses
+
+  // Chart Data Generation
+  const getChartData = () => {
+    const days = viewMode === 'week' ? 7 : 30;
+    const data = [];
+    const now = new Date();
+
+    for (let i = days - 1; i >= 0; i--) {
+      const d = new Date();
+      d.setDate(now.getDate() - i);
+      const dayStr = d.toLocaleDateString('en-US', { weekday: 'short' });
+      const dateStr = d.toISOString().split('T')[0];
+
+      const daySales = invoices
+        .filter(inv => inv.date.startsWith(dateStr))
+        .reduce((sum, inv) => sum + inv.totalAmount, 0);
+
+      data.push({ name: dayStr, sales: daySales });
+    }
+    return data;
+  };
+
+  const chartData = getChartData();
 
   return (
     <div className="space-y-6 lg:space-y-10 animate-in fade-in duration-700">
@@ -53,16 +86,26 @@ const Dashboard: React.FC = () => {
           <p className="text-slate-400 text-sm font-medium tracking-tight truncate">Business health for <span className="text-blue-600 font-black">{user?.shopName}</span></p>
         </div>
         <div className="bg-white p-1.5 rounded-2xl border border-slate-100 flex gap-1 shadow-sm self-start sm:self-auto">
-          <button className="px-4 lg:px-5 py-2 lg:py-2.5 bg-blue-600 text-white rounded-xl text-[9px] lg:text-[10px] font-black uppercase tracking-widest shadow-lg shadow-blue-100 whitespace-nowrap">Live Analytics</button>
-          <button className="px-4 lg:px-5 py-2 lg:py-2.5 text-slate-400 hover:text-blue-600 rounded-xl text-[9px] lg:text-[10px] font-black uppercase tracking-widest whitespace-nowrap">History</button>
+          <button
+            onClick={() => setViewMode('week')}
+            className={`px-4 lg:px-5 py-2 lg:py-2.5 rounded-xl text-[9px] lg:text-[10px] font-black uppercase tracking-widest whitespace-nowrap transition-all ${viewMode === 'week' ? 'bg-blue-600 text-white shadow-lg shadow-blue-100' : 'text-slate-400 hover:text-blue-600'}`}
+          >
+            Live Analytics
+          </button>
+          <button
+            onClick={() => setViewMode('month')}
+            className={`px-4 lg:px-5 py-2 lg:py-2.5 rounded-xl text-[9px] lg:text-[10px] font-black uppercase tracking-widest whitespace-nowrap transition-all ${viewMode === 'month' ? 'bg-blue-600 text-white shadow-lg shadow-blue-100' : 'text-slate-400 hover:text-blue-600'}`}
+          >
+            History
+          </button>
         </div>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-6">
-        <StatCard onClick={() => navigate('/reports')} title="Revenue" value="₹32,350" subtitle="Total Sales" icon="💰" iconBg="bg-blue-50" iconColor="text-blue-600" />
-        <StatCard onClick={() => navigate('/reports')} title="Expenses" value="₹6,000" subtitle="Outflow" icon="📉" iconBg="bg-indigo-50" iconColor="text-indigo-600" />
-        <StatCard onClick={() => navigate('/reports')} title="Dues" value="₹56,034" subtitle="Pending" icon="💳" iconBg="bg-amber-50" iconColor="text-amber-600" />
-        <StatCard onClick={() => navigate('/reports')} title="Profit" value="₹26,350" subtitle="Net Income" icon="💎" iconBg="bg-emerald-50" iconColor="text-emerald-600" />
+        <StatCard onClick={() => navigate('/reports')} title="Revenue" value={`₹${formatCurrency(totalSales)}`} subtitle="Total Sales" icon="💰" iconBg="bg-blue-50" iconColor="text-blue-600" />
+        <StatCard onClick={() => navigate('/reports')} title="Expenses" value={`₹${formatCurrency(expenses)}`} subtitle="Est. Outflow" icon="📉" iconBg="bg-indigo-50" iconColor="text-indigo-600" />
+        <StatCard onClick={() => navigate('/reports')} title="Dues" value={`₹${formatCurrency(pendingAmount)}`} subtitle="Pending" icon="💳" iconBg="bg-amber-50" iconColor="text-amber-600" />
+        <StatCard onClick={() => navigate('/reports')} title="Profit" value={`₹${formatCurrency(estimatedProfit)}`} subtitle="Net Income" icon="💎" iconBg="bg-emerald-50" iconColor="text-emerald-600" />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 lg:gap-8">
@@ -70,12 +113,12 @@ const Dashboard: React.FC = () => {
           <div className="flex justify-between items-start mb-6 lg:mb-10">
             <div>
               <h4 className="text-lg lg:text-xl font-black text-slate-800">Shop Performance</h4>
-              <p className="text-[10px] font-bold text-slate-400 mt-1 uppercase tracking-widest">Weekly Sales Trend</p>
+              <p className="text-[10px] font-bold text-slate-400 mt-1 uppercase tracking-widest">{viewMode === 'week' ? 'Weekly' : 'Monthly'} Sales Trend</p>
             </div>
           </div>
           <div className="h-64 lg:h-72">
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={invoiceData}>
+              <LineChart data={chartData}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f8fafc" />
                 <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 10, fontWeight: '900' }} dy={10} />
                 <YAxis hide={true} />
@@ -83,8 +126,7 @@ const Dashboard: React.FC = () => {
                   contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
                   formatter={(value: number) => [`₹${value}`, '']}
                 />
-                <Line type="monotone" dataKey="thisWeek" stroke="#2563eb" strokeWidth={5} dot={{ r: 5, strokeWidth: 3, fill: '#fff', stroke: '#2563eb' }} activeDot={{ r: 8 }} />
-                <Line type="monotone" dataKey="lastWeek" stroke="#cbd5e1" strokeWidth={2} strokeDasharray="10 5" dot={false} />
+                <Line type="monotone" dataKey="sales" stroke="#2563eb" strokeWidth={5} dot={{ r: 5, strokeWidth: 3, fill: '#fff', stroke: '#2563eb' }} activeDot={{ r: 8 }} />
               </LineChart>
             </ResponsiveContainer>
           </div>

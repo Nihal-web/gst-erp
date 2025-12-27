@@ -4,7 +4,7 @@ import { useApp } from '../AppContext';
 import { FirmSettings } from '../types';
 
 const Settings: React.FC = () => {
-  const { firm, setFirm, showAlert } = useApp();
+  const { firm, setFirm, showAlert, invoices } = useApp();
   const [formData, setFormData] = useState<FirmSettings>(firm);
 
   useEffect(() => {
@@ -22,6 +22,45 @@ const Settings: React.FC = () => {
 
   const handleExport = (type: string) => {
     showAlert(`Compiling ${type} Archive...`, 'info');
+
+    // Generate CSV Content
+    let csvContent = "data:text/csv;charset=utf-8,";
+
+    if (type === 'GSTR-1') {
+      csvContent += "Invoice No,Date,Customer Name,GSTIN,Taxable Value,IGST,CGST,SGST,Total Amount\n";
+      invoices.forEach(inv => {
+        const row = [
+          inv.invoiceNo,
+          inv.date,
+          inv.customer.name,
+          inv.customer.gstin,
+          inv.totalTaxable,
+          inv.igst || 0,
+          inv.cgst || 0,
+          inv.sgst || 0,
+          inv.totalAmount
+        ].join(",");
+        csvContent += row + "\n";
+      });
+    } else if (type === 'GSTR-3B') {
+      csvContent += "Section,Total Taxable,Total IGST,Total CGST,Total SGST\n";
+      const totalTaxable = invoices.reduce((s, i) => s + i.totalTaxable, 0);
+      const totalIGST = invoices.reduce((s, i) => s + (i.igst || 0), 0);
+      const totalCGST = invoices.reduce((s, i) => s + (i.cgst || 0), 0);
+      const totalSGST = invoices.reduce((s, i) => s + (i.sgst || 0), 0);
+
+      csvContent += `Outward Supplies,${totalTaxable},${totalIGST},${totalCGST},${totalSGST}\n`;
+    }
+
+    // Trigger Download
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `${type}_${new Date().toISOString().split('T')[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+
     setTimeout(() => {
       showAlert(`${type} Excel downloaded.`, 'success');
     }, 1500);
