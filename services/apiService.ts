@@ -361,3 +361,13 @@ export const deleteTenantRecord = async (tenantId: string, entity: string, id: s
     if (error) throw error;
 };
 
+export const deleteUser = async (userId: string) => {
+    // Platform Admin Only
+    // This removes the user record from public.users. 
+    // It cascades to other tables if Foreign Keys are set to CASCADE, 
+    // otherwise we might need to delete related data first.
+    // Assuming schema has ON DELETE CASCADE for tenant_id fkeys.
+    const { error } = await supabase.from('users').delete().eq('id', userId);
+    if (error) throw error;
+};
+

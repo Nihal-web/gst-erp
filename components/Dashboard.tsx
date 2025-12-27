@@ -82,13 +82,6 @@ const Dashboard: React.FC = () => {
 
   return (
     <div className="space-y-6 lg:space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-700">
-      <div className="bg-yellow-100 p-4 rounded-xl border border-yellow-300 text-yellow-800 text-xs font-mono">
-        <strong>DEBUG MODE:</strong><br />
-        Auth ID: {authUser?.id}<br />
-        DB ID: {user.id}<br />
-        Role: {user.role}<br />
-        Email: {user.email}
-      </div>
       <div className="flex flex-col sm:flex-row sm:justify-between sm:items-end gap-4 lg:gap-0">
         <div>
           <h2 className="text-2xl lg:text-3xl font-black text-slate-800 tracking-tight">Shop Console</h2>

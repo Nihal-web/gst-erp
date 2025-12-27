@@ -10,7 +10,8 @@ import {
   fetchShopSettingsAdmin,
   saveShopSettingsAdmin,
   fetchTenantData,
-  deleteTenantRecord
+  deleteTenantRecord,
+  deleteUser
 } from '../services/apiService';
 import { FirmSettings } from '../types';
 import {
@@ -111,6 +112,17 @@ const PlatformAdmin: React.FC = () => {
       if (entity === 'invoices') setTenantInvoices(prev => prev.filter(i => i.id !== id));
     } catch (e) {
       showAlert('Purge failed', 'error');
+    }
+  };
+
+  const handleTenantDelete = async (userId: string) => {
+    if (!window.confirm("CRITICAL WARNING: You are about to DELETE a Tenant Account.\n\nThis will remove their profile and prevents login.\n\nAre you sure?")) return;
+    try {
+      await deleteUser(userId);
+      showAlert('Tenant account purged.', 'success');
+      refreshData();
+    } catch (e) {
+      showAlert('Failed to delete tenant. Check FK constraints.', 'error');
     }
   };
 
@@ -240,6 +252,7 @@ const PlatformAdmin: React.FC = () => {
                       <button onClick={() => openTenantDrillDown(shopUser.id)} className="px-3 py-1.5 bg-blue-50 text-blue-600 text-[10px] font-black rounded-lg hover:bg-blue-100 transition-colors">DATA</button>
                       <button onClick={() => openShopEditor(shopUser.id)} className="px-3 py-1.5 bg-slate-100 text-slate-600 text-[10px] font-black rounded-lg hover:bg-slate-200 transition-colors">EDIT</button>
                       <button onClick={() => handleToggleStatus('SHOP', shopUser.id, shopUser.status || 'active')} className="px-3 py-1.5 bg-slate-800 text-white text-[10px] font-black rounded-lg hover:bg-black transition-colors">{shopUser.status === 'suspended' ? 'RESTORE' : 'SUSPEND'}</button>
+                      <button onClick={() => handleTenantDelete(shopUser.id)} className="px-3 py-1.5 bg-red-100 text-red-600 text-[10px] font-black rounded-lg hover:bg-red-200 transition-colors">DELETE</button>
                     </div>
                   </td>
                 </tr>
