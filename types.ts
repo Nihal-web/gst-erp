@@ -57,8 +57,9 @@ export interface Warehouse {
   id: string;
   name: string;
   location: string;
-  capability: string; // 'Storage', 'Distribution', 'Cold Storage'
   manager?: string;
+  phone?: string;
+  status?: string;
 }
 
 export interface StockLog {

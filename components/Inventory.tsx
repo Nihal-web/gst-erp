@@ -41,7 +41,7 @@ const Inventory: React.FC = () => {
 
   // New Warehouse State
   const [newWarehouse, setNewWarehouse] = useState<Partial<Warehouse>>({
-    name: '', location: '', capability: 'Storage'
+    name: '', location: '', manager: '', phone: ''
   });
 
   const handleAIHSNFetch = async () => {
@@ -70,9 +70,10 @@ const Inventory: React.FC = () => {
       id: Math.random().toString(36).substr(2, 9),
       name: newWarehouse.name!,
       location: newWarehouse.location || '',
-      capability: newWarehouse.capability || 'Storage'
+      manager: newWarehouse.manager || '',
+      phone: newWarehouse.phone || ''
     });
-    setNewWarehouse({ name: '', location: '', capability: 'Storage' });
+    setNewWarehouse({ name: '', location: '', manager: '', phone: '' });
     setShowWarehouseModal(false);
   };
 
@@ -235,6 +236,14 @@ const Inventory: React.FC = () => {
                 <div>
                   <label className="text-[10px] uppercase font-black text-slate-500">Location</label>
                   <input type="text" value={newWarehouse.location} onChange={e => setNewWarehouse({ ...newWarehouse, location: e.target.value })} className="w-full border border-slate-200 rounded-xl px-4 py-3 font-bold text-sm outline-none" placeholder="City / Area" />
+                </div>
+                <div>
+                  <label className="text-[10px] uppercase font-black text-slate-500">Manager</label>
+                  <input type="text" value={newWarehouse.manager} onChange={e => setNewWarehouse({ ...newWarehouse, manager: e.target.value })} className="w-full border border-slate-200 rounded-xl px-4 py-3 font-bold text-sm outline-none" placeholder="Manager Name" />
+                </div>
+                <div>
+                  <label className="text-[10px] uppercase font-black text-slate-500">Phone</label>
+                  <input type="text" value={newWarehouse.phone} onChange={e => setNewWarehouse({ ...newWarehouse, phone: e.target.value })} className="w-full border border-slate-200 rounded-xl px-4 py-3 font-bold text-sm outline-none" placeholder="Contact Number" />
                 </div>
                 <div className="flex gap-3 pt-4">
                   <button type="button" onClick={() => setShowWarehouseModal(false)} className="flex-1 py-3 bg-slate-100 text-slate-600 rounded-xl font-black text-xs">Cancel</button>

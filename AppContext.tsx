@@ -6,7 +6,8 @@ import {
   fetchProducts, createProduct,
   fetchInvoices, createInvoice,
   fetchSettings, saveSettings,
-  fetchGlobalStats, fetchStockLogs, adjustStockApi, updateUserProfile as updateUserProfileApi
+  fetchGlobalStats, fetchStockLogs, adjustStockApi, updateUserProfile as updateUserProfileApi,
+  fetchWarehouses, createWarehouse as createWarehouseApi, deleteWarehouse as deleteWarehouseApi
 } from './services/apiService';
 import { INITIAL_PRODUCTS, INITIAL_CUSTOMERS, DEFAULT_FIRM_SETTINGS } from './constants';
 import { useAuth } from './AuthContext';
@@ -68,17 +69,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         const stats = await fetchGlobalStats();
         setGlobalStats(stats);
       } else {
-        const [c, p, invs, sets, logs] = await Promise.all([
+        const [c, p, invs, sets, logs, wh] = await Promise.all([
           fetchCustomers(),
           fetchProducts(),
           fetchInvoices(),
           fetchSettings(),
-          fetchStockLogs()
+          fetchStockLogs(),
+          fetchWarehouses()
         ]);
         setCustomers(c);
         setProducts(p.length > 0 ? p : INITIAL_PRODUCTS);
         setInvoices(invs);
         setStockLogs(logs);
+        setWarehouses(wh || []);
         if (sets) setFirm(sets);
         else setFirm({ ...DEFAULT_FIRM_SETTINGS, name: user.shopName });
       }
@@ -126,8 +129,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const created = await createCustomer(customer);
       setCustomers(prev => [created, ...prev]);
       showAlert(`Client ${created.name} registered.`, 'success');
-    } catch (e) {
-      showAlert('Failed to register client.', 'error');
+    } catch (e: any) {
+      console.error('Customer creation error:', e);
+      showAlert(`Failed to register client: ${e.message || 'Unknown error'}`, 'error');
     }
   };
 
@@ -181,14 +185,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     showAlert('Customer profile updated locally.', 'success');
   };
 
-  const addWarehouse = (warehouse: Warehouse) => {
-    setWarehouses(prev => [...prev, warehouse]);
-    showAlert(`Warehouse ${warehouse.name} added.`, 'success');
+  const addWarehouse = async (warehouse: Warehouse) => {
+    try {
+      const created = await createWarehouseApi(warehouse);
+      setWarehouses(prev => [...prev, created]);
+      showAlert(`Warehouse ${warehouse.name} added.`, 'success');
+    } catch (e) {
+      showAlert('Failed to add warehouse.', 'error');
+    }
   };
 
-  const deleteWarehouse = (id: string) => {
-    setWarehouses(prev => prev.filter(w => w.id !== id));
-    showAlert('Warehouse removed.', 'info');
+  const deleteWarehouse = async (id: string) => {
+    try {
+      await deleteWarehouseApi(id);
+      setWarehouses(prev => prev.filter(w => w.id !== id));
+      showAlert('Warehouse removed.', 'info');
+    } catch (e) {
+      showAlert('Failed to delete warehouse.', 'error');
+    }
   };
 
   const updateUserProfile = async (name: string, shopName: string) => {

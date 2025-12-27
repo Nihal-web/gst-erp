@@ -26,7 +26,7 @@ export const saveSettings = async (settings: FirmSettings) => {
 
     const payload = {
         tenant_id: user.id,
-        name: settings.name,
+        firm_name: settings.name, // Mapped to DB column firm_name
         tagline: settings.tagline,
         address: settings.address,
         pan: settings.pan,
@@ -45,14 +45,36 @@ export const saveSettings = async (settings: FirmSettings) => {
         declaration: settings.declaration
     };
 
-    const { data, error } = await supabase
+    // Robust approach: Check existence first to avoid Unique Constraint dependency issues
+    const { data: existing } = await supabase
         .from('firm_settings')
-        .upsert(payload, { onConflict: 'tenant_id' })
-        .select()
+        .select('id')
+        .eq('tenant_id', user.id)
         .single();
 
-    if (error) throw error;
-    return data;
+    let result;
+    if (existing) {
+        // Update
+        result = await supabase
+            .from('firm_settings')
+            .update(payload)
+            .eq('id', existing.id)
+            .select()
+            .single();
+    } else {
+        // Insert
+        result = await supabase
+            .from('firm_settings')
+            .insert([payload])
+            .select()
+            .single();
+    }
+
+    if (result.error) {
+        console.error("Save Settings Error:", result.error);
+        throw result.error;
+    }
+    return result.data;
 };
 
 // --- CUSTOMERS ---
@@ -402,6 +424,36 @@ export const updateUserProfile = async (userId: string, data: { name: string; sh
         shop_name: data.shopName
     }).eq('id', userId);
 
+    if (error) throw error;
+};
+
+// --- WAREHOUSES ---
+export const fetchWarehouses = async () => {
+    const { data, error } = await supabase.from('warehouses').select('*').order('created_at', { ascending: false });
+    if (error) throw error;
+    return data || [];
+};
+
+export const createWarehouse = async (warehouse: any) => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) throw new Error("No user");
+
+    const payload = {
+        tenant_id: user.id,
+        name: warehouse.name,
+        location: warehouse.location || '',
+        manager: warehouse.manager || '',
+        phone: warehouse.phone || '',
+        status: 'active'
+    };
+
+    const { data, error } = await supabase.from('warehouses').insert([payload]).select().single();
+    if (error) throw error;
+    return data;
+};
+
+export const deleteWarehouse = async (id: string) => {
+    const { error } = await supabase.from('warehouses').delete().eq('id', id);
     if (error) throw error;
 };
 
