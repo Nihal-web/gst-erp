@@ -15,7 +15,7 @@ const Logo = () => (
 
 const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const navigate = useNavigate();
-  const { user, logout, switchRole } = useAuth();
+  const { user, logout, switchRole, originalRole } = useAuth();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   const navItems = [
@@ -29,7 +29,7 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   ];
 
   const filteredItems = navItems.filter(item => user && item.roles.includes(user.role));
-  const isImpersonating = user?.role !== UserRole.PLATFORM_ADMIN && user?.email === 'super@gstmaster.com';
+  const isImpersonating = originalRole === UserRole.PLATFORM_ADMIN && user?.role !== UserRole.PLATFORM_ADMIN;
 
   const toggleSidebar = () => setIsSidebarOpen(!isSidebarOpen);
 

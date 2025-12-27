@@ -6,7 +6,7 @@ import {
   fetchProducts, createProduct,
   fetchInvoices, createInvoice,
   fetchSettings, saveSettings,
-  fetchGlobalStats, fetchStockLogs, adjustStockApi
+  fetchGlobalStats, fetchStockLogs, adjustStockApi, updateUserProfile as updateUserProfileApi
 } from './services/apiService';
 import { INITIAL_PRODUCTS, INITIAL_CUSTOMERS, DEFAULT_FIRM_SETTINGS } from './constants';
 import { useAuth } from './AuthContext';
@@ -38,6 +38,7 @@ interface AppContextType {
   deleteWarehouse: (id: string) => void;
   showAlert: (message: string, type?: 'success' | 'error' | 'info') => void;
   refreshData: () => void;
+  updateUserProfile: (name: string, shopName: string) => Promise<void>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -190,12 +191,26 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     showAlert('Warehouse removed.', 'info');
   };
 
+  const updateUserProfile = async (name: string, shopName: string) => {
+    if (!user) return;
+    try {
+      await updateUserProfileApi(user.id, { name, shopName });
+      // In a real app we might need to refresh the auth session or local user state
+      // For now we assume a refresh or just notify success
+      showAlert('Profile updated successfully', 'success');
+      loadData(); // To refresh firm settings mostly, but user details in AuthContext won't update unless we reload page or have auth refresh
+    } catch (e) {
+      showAlert('Failed to update profile', 'error');
+      throw e;
+    }
+  };
+
   return (
     <AppContext.Provider value={{
       products, customers, invoices, stockLogs, firm, globalStats,
       warehouses,
       addInvoice, updateProduct, addProduct, deleteProduct, adjustStock, updateCustomer, addCustomer, setFirm: handleSetFirm, showAlert,
-      addWarehouse, deleteWarehouse,
+      addWarehouse, deleteWarehouse, updateUserProfile,
       refreshData: loadData
     }}>
       {children}

@@ -88,12 +88,24 @@ export const createCustomer = async (customer: Customer): Promise<Customer> => {
 
 // --- INVENTORY ---
 export const fetchProducts = async (): Promise<Product[]> => {
-    const { data, error } = await supabase.from('inventory').select('*').order('created_at', { ascending: false });
+    const { data, error } = await supabase
+        .from('inventory')
+        .select('*, packaging_units(*)')
+        .order('created_at', { ascending: false });
+
     if (error) throw error;
     return data.map((row: any) => ({
         ...row,
         gstPercent: row.gst_percent,
-        warehouseId: row.warehouse_id
+        warehouseId: row.warehouse_id,
+        alertThreshold: row.alert_threshold,
+        packagingUnits: row.packaging_units?.map((pu: any) => ({
+            id: pu.id,
+            productId: pu.product_id,
+            unitName: pu.unit_name,
+            conversionFactor: pu.conversion_factor,
+            isDefault: pu.is_default
+        })) || []
     }));
 };
 
@@ -110,12 +122,25 @@ export const createProduct = async (product: Product): Promise<Product> => {
         unit: product.unit,
         stock: product.stock,
         gst_percent: product.gstPercent,
+        alert_threshold: product.alertThreshold ?? 10,
         warehouse_id: product.warehouseId,
         status: 'active'
     };
 
     const { data, error } = await supabase.from('inventory').insert([payload]).select().single();
     if (error) throw error;
+
+    if (product.packagingUnits && product.packagingUnits.length > 0) {
+        const puPayload = product.packagingUnits.map(pu => ({
+            product_id: data.id,
+            unit_name: pu.unitName,
+            conversion_factor: pu.conversionFactor,
+            is_default: pu.isDefault
+        }));
+        const { error: puError } = await supabase.from('packaging_units').insert(puPayload);
+        if (puError) console.error("Error inserting packaging units", puError);
+    }
+
     return { ...data, gstPercent: data.gst_percent } as Product;
 };
 
@@ -217,13 +242,13 @@ export const createInvoice = async (invoice: Invoice) => {
     for (const item of invoice.items) {
         if (item.productId) {
             // Decrement stock
-            // RPC would be better: increment_stock(id, -qty)
-            // For now, read-update-write or just assumes.
-            // Supabase RPC 'decrement_stock' is common pattern.
-            // I'll try direct update assuming no contention for this single user tenant.
+            // Calculate deduction based on conversion factor if present (Packaging Unit)
+            // If conversionFactor is set (e.g. 1 Katta = 10 KG), and qty is 1, we deduct 10.
+            const deduction = item.conversionFactor ? (item.qty * item.conversionFactor) : item.qty;
+
             const { data: prod } = await supabase.from('inventory').select('stock').eq('id', item.productId).single();
             if (prod) {
-                await supabase.from('inventory').update({ stock: prod.stock - item.qty }).eq('id', item.productId);
+                await supabase.from('inventory').update({ stock: prod.stock - deduction }).eq('id', item.productId);
             }
         }
     }
@@ -302,7 +327,7 @@ export const toggleStatus = async (type: string, id: string, status: string) => 
 };
 
 export const toggleSystem = async (name: string, value: boolean) => {
-    const { error } = await supabase.from('system_settings').update({ value: String(value) }).eq('name', name);
+    const { error } = await supabase.from('system_settings').upsert({ name, value: String(value) }, { onConflict: 'name' });
     if (error) throw error;
 };
 
@@ -368,6 +393,15 @@ export const deleteUser = async (userId: string) => {
     // otherwise we might need to delete related data first.
     // Assuming schema has ON DELETE CASCADE for tenant_id fkeys.
     const { error } = await supabase.from('users').delete().eq('id', userId);
+    if (error) throw error;
+};
+
+export const updateUserProfile = async (userId: string, data: { name: string; shopName: string }) => {
+    const { error } = await supabase.from('users').update({
+        name: data.name,
+        shop_name: data.shopName
+    }).eq('id', userId);
+
     if (error) throw error;
 };
 

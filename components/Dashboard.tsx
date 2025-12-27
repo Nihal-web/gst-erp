@@ -42,7 +42,7 @@ const StatCard: React.FC<{
 
 const Dashboard: React.FC = () => {
   const { user } = useAuth();
-  const { invoices } = useApp();
+  const { invoices, products } = useApp();
   const navigate = useNavigate();
   const [viewMode, setViewMode] = useState<'week' | 'month'>('week');
 
@@ -54,6 +54,8 @@ const Dashboard: React.FC = () => {
   // Assuming 70% is cost for profit calculation (mock logic until expense tracking is added)
   const estimatedProfit = totalSales * 0.3;
   const expenses = totalSales * 0.7; // Mock expenses
+
+  const lowStockCount = products.filter(p => p.stock < (p.alertThreshold || 10)).length;
 
   // Chart Data Generation
   const getChartData = () => {
@@ -164,6 +166,15 @@ const Dashboard: React.FC = () => {
           </div>
 
           <div className="mt-8 lg:mt-10 pt-6 lg:pt-8 border-t border-white/10">
+            {lowStockCount > 0 && (
+              <div className="mb-4 bg-red-500/20 border border-red-500/30 p-3 rounded-xl flex items-center gap-3">
+                <span className="text-xl">⚠️</span>
+                <div>
+                  <p className="text-[10px] font-black text-red-300 uppercase tracking-widest">Action Required</p>
+                  <p className="text-xs font-bold text-white">{lowStockCount} items below stock threshold.</p>
+                </div>
+              </div>
+            )}
             <p className="text-[9px] lg:text-[10px] font-black text-blue-400 uppercase tracking-[0.2em] mb-2">Compliance Alert</p>
             <p className="text-[11px] lg:text-xs font-medium text-white/60 leading-relaxed">GSTR-1 filing window closes in 4 days. Synchronize all invoices.</p>
           </div>

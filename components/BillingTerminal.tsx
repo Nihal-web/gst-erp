@@ -108,7 +108,36 @@ const BillingTerminal: React.FC = () => {
       rate: p.rate,
       unit: p.unit,
       gstPercent: p.gstPercent,
-      taxableValue: newItems[index].qty * p.rate
+      taxableValue: newItems[index].qty * p.rate,
+      conversionFactor: undefined // Reset to base unit
+    };
+    setItems(newItems);
+  };
+
+  const handleUnitChange = (index: number, unitName: string) => {
+    const item = items[index];
+    const product = products.find(p => p.id === item.productId);
+    if (!product) return;
+
+    let newRate = product.rate;
+    let newFactor: number | undefined = undefined;
+
+    if (unitName !== product.unit) {
+      // Find packaging unit
+      const pkgUnit = product.packagingUnits?.find(u => u.unitName === unitName);
+      if (pkgUnit) {
+        newRate = product.rate * pkgUnit.conversionFactor;
+        newFactor = pkgUnit.conversionFactor;
+      }
+    }
+
+    const newItems = [...items];
+    newItems[index] = {
+      ...item,
+      unit: unitName,
+      rate: newRate,
+      conversionFactor: newFactor,
+      taxableValue: item.qty * newRate
     };
     setItems(newItems);
   };
@@ -483,12 +512,29 @@ const BillingTerminal: React.FC = () => {
                         </div>
                       </td>
                       <td className="px-6 py-4 text-center">
-                        <input
-                          type="number"
-                          value={item.qty}
-                          onChange={(e) => updateItem(index, 'qty', e.target.value)}
-                          className="w-16 bg-white border border-slate-300 rounded-lg py-1.5 px-2 text-xs font-black text-slate-800 text-center outline-none"
-                        />
+                        <div className="flex flex-col gap-1 items-center">
+                          <input
+                            type="number"
+                            value={item.qty}
+                            onChange={(e) => updateItem(index, 'qty', e.target.value)}
+                            className="w-16 bg-white border border-slate-300 rounded-lg py-1.5 px-2 text-xs font-black text-slate-800 text-center outline-none"
+                          />
+                          {/* Unit Selector */}
+                          {products.find(p => p.id === item.productId)?.packagingUnits?.length ? (
+                            <select
+                              value={item.unit}
+                              onChange={(e) => handleUnitChange(index, e.target.value)}
+                              className="w-20 bg-slate-50 border border-slate-200 rounded-md text-[9px] font-bold text-slate-600 outline-none p-1"
+                            >
+                              <option value={products.find(p => p.id === item.productId)?.unit}>{products.find(p => p.id === item.productId)?.unit} (Base)</option>
+                              {products.find(p => p.id === item.productId)?.packagingUnits?.map(u => (
+                                <option key={u.id} value={u.unitName}>{u.unitName}</option>
+                              ))}
+                            </select>
+                          ) : (
+                            <span className="text-[9px] font-bold text-slate-400 uppercase">{item.unit}</span>
+                          )}
+                        </div>
                       </td>
                       <td className="px-6 py-4">
                         <input

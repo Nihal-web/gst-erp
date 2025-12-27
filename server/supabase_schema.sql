@@ -20,10 +20,20 @@ CREATE TABLE IF NOT EXISTS inventory (
   hsn VARCHAR(50) NOT NULL,
   sac VARCHAR(50),
   rate DECIMAL(10, 2) NOT NULL,
-  unit VARCHAR(50) NOT NULL,
+  unit VARCHAR(50) NOT NULL, -- This is the BASE Unit
   stock INT NOT NULL DEFAULT 0,
   gst_percent DECIMAL(5, 2) NOT NULL,
+  alert_threshold INT DEFAULT 10, -- Low stock alert threshold in Base Units
   tenant_id UUID NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS packaging_units (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  product_id UUID NOT NULL REFERENCES inventory(id) ON DELETE CASCADE,
+  unit_name VARCHAR(50) NOT NULL,
+  conversion_factor DECIMAL(10, 2) NOT NULL,
+  is_default BOOLEAN DEFAULT false,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -95,3 +105,4 @@ CREATE INDEX idx_invoices_customer ON invoices(customer_id);
 CREATE INDEX idx_invoice_items_invoice ON invoice_items(invoice_id);
 CREATE INDEX idx_firm_settings_tenant ON firm_settings(tenant_id);
 CREATE INDEX idx_sale_ledger_tenant ON sale_ledger(tenant_id);
+CREATE INDEX idx_packaging_units_product ON packaging_units(product_id);

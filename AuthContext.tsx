@@ -11,6 +11,7 @@ interface AuthContextType {
   logout: () => void;
   switchRole: (role: UserRole) => void;
   isLoading: boolean;
+  originalRole: UserRole | null;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -20,6 +21,7 @@ const CURRENT_USER_KEY = 'gst_erp_current_session';
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
+  const [originalRole, setOriginalRole] = useState<UserRole | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
@@ -55,6 +57,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       if (data) {
         setUser({ ...data, email });
+        setOriginalRole(data.role as UserRole);
       } else {
         // ID mismatch? Check if legacy user exists by email
         const { data: legacyUser } = await supabase
@@ -75,6 +78,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
           if (migrated) {
             setUser({ ...migrated, email });
+            setOriginalRole(migrated.role as UserRole);
             return;
           } else {
             console.error("Migration failed", migrateError);
@@ -91,6 +95,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         await supabase.from('users').insert([newUser]);
 
         setUser(newUser as User);
+        setOriginalRole(newUser.role as UserRole);
       }
     } catch (e) {
       console.error("Profile fetch error", e);
@@ -129,12 +134,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (dbError) console.error("Failed to create public user record", dbError);
 
       setUser(newUser as unknown as User);
+      setOriginalRole(newUser.role as UserRole);
     }
   };
 
   const logout = async () => {
     await supabase.auth.signOut();
     setUser(null);
+    setOriginalRole(null);
     localStorage.removeItem(CURRENT_USER_KEY);
   };
 
@@ -144,7 +151,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   return (
-    <AuthContext.Provider value={{ user, login, signup, logout, switchRole, isLoading }}>
+    <AuthContext.Provider value={{ user, login, signup, logout, switchRole, isLoading, originalRole }}>
       {children}
     </AuthContext.Provider>
   );

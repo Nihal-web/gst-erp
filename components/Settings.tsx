@@ -2,14 +2,28 @@
 import React, { useState, useEffect } from 'react';
 import { useApp } from '../AppContext';
 import { FirmSettings } from '../types';
+import { useAuth } from '../AuthContext';
 
 const Settings: React.FC = () => {
-  const { firm, setFirm, showAlert, invoices } = useApp();
+  const { firm, setFirm, showAlert, invoices, updateUserProfile } = useApp();
+  const { user } = useAuth();
+  const [activeTab, setActiveTab] = useState<'firm' | 'profile'>('firm');
+
+  // Firm Form Data
   const [formData, setFormData] = useState<FirmSettings>(firm);
+
+  // Profile Form Data
+  const [profileData, setProfileData] = useState({ name: '', shopName: '' });
 
   useEffect(() => {
     setFormData(firm);
   }, [firm]);
+
+  useEffect(() => {
+    if (user) {
+      setProfileData({ name: user.name, shopName: user.shopName });
+    }
+  }, [user]);
 
   const handleChange = (field: keyof FirmSettings, value: any) => {
     setFormData(prev => ({ ...prev, [field]: value }));
@@ -18,6 +32,15 @@ const Settings: React.FC = () => {
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     await setFirm(formData);
+  };
+
+  const handleProfileUpdate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!profileData.name || !profileData.shopName) {
+      showAlert("Name and Shop Name are required", "error");
+      return;
+    }
+    await updateUserProfile(profileData.name, profileData.shopName);
   };
 
   const handleExport = (type: string) => {
@@ -70,13 +93,82 @@ const Settings: React.FC = () => {
     <div className="space-y-6 lg:space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
       <div className="flex justify-between items-end">
         <div>
-          <h2 className="text-2xl lg:text-3xl font-black text-slate-800 tracking-tight">Firm Console</h2>
-          <p className="text-slate-400 text-sm font-medium tracking-tight">Identity, banking, and tax config.</p>
+          <h2 className="text-2xl lg:text-3xl font-black text-slate-800 tracking-tight">Settings & Config</h2>
+          <p className="text-slate-400 text-sm font-medium tracking-tight">Manage your firm and personal profile.</p>
+        </div>
+        <div className="flex gap-1 bg-slate-100 p-1 rounded-xl">
+          <button
+            onClick={() => setActiveTab('firm')}
+            className={`px-4 py-2 text-xs font-black uppercase tracking-widest rounded-lg transition-all ${activeTab === 'firm' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+          >
+            Firm Console
+          </button>
+          <button
+            onClick={() => setActiveTab('profile')}
+            className={`px-4 py-2 text-xs font-black uppercase tracking-widest rounded-lg transition-all ${activeTab === 'profile' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+          >
+            My Profile
+          </button>
         </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 lg:gap-8">
-        <div className="lg:col-span-2 space-y-6 lg:space-y-8">
+
+        {/* Profile Tab Content */}
+        {activeTab === 'profile' && (
+          <div className="lg:col-span-2 space-y-6 lg:space-y-8 animate-in fade-in zoom-in-95">
+            <div className="bg-white p-6 lg:p-10 rounded-3xl lg:rounded-[2.5rem] shadow-sm border border-slate-200">
+              <h3 className="text-lg lg:text-xl font-black text-slate-800 mb-6 flex items-center gap-3">
+                <span className="text-purple-500">👤</span> User Profile
+              </h3>
+              <form onSubmit={handleProfileUpdate} className="space-y-6">
+                <div className="flex items-center gap-6 p-4 bg-slate-50 rounded-2xl border border-slate-100">
+                  <div className="w-16 h-16 bg-blue-600 text-white rounded-full flex items-center justify-center text-2xl font-black">
+                    {user?.name?.charAt(0).toUpperCase()}
+                  </div>
+                  <div>
+                    <p className="text-xs font-black uppercase text-slate-400 tracking-widest">Logged in as</p>
+                    <p className="text-lg font-bold text-slate-800">{user?.email}</p>
+                    <div className="flex gap-2 mt-1">
+                      <span className="px-2 py-0.5 bg-blue-100 text-blue-600 text-[9px] font-black uppercase rounded">{user?.role}</span>
+                      <span className="px-2 py-0.5 bg-green-100 text-green-600 text-[9px] font-black uppercase rounded">{user?.plan} Plan</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 lg:gap-6">
+                  <div>
+                    <label className="text-[9px] font-black uppercase text-slate-500 tracking-widest block mb-2">Display Name</label>
+                    <input
+                      type="text"
+                      value={profileData.name}
+                      onChange={(e) => setProfileData({ ...profileData, name: e.target.value })}
+                      className="w-full bg-white border border-slate-200 rounded-2xl py-3 px-4 font-bold text-slate-800 outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[9px] font-black uppercase text-slate-500 tracking-widest block mb-2">Shop Identifier Name</label>
+                    <input
+                      type="text"
+                      value={profileData.shopName}
+                      onChange={(e) => setProfileData({ ...profileData, shopName: e.target.value })}
+                      className="w-full bg-white border border-slate-200 rounded-2xl py-3 px-4 font-bold text-slate-800 outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                    />
+                  </div>
+                </div>
+                <button
+                  type="submit"
+                  className="w-full py-4 bg-purple-600 text-white rounded-2xl font-black shadow-xl shadow-purple-200 hover:shadow-2xl active:scale-[0.98] transition-all text-xs lg:text-sm uppercase"
+                >
+                  Update My Profile
+                </button>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* Firm Tab Content - Wrap existing div */}
+        <div className={`lg:col-span-2 space-y-6 lg:space-y-8 ${activeTab === 'firm' ? 'block animate-in fade-in zoom-in-95' : 'hidden'}`}>
           <div className="bg-white p-6 lg:p-10 rounded-3xl lg:rounded-[2.5rem] shadow-sm border border-slate-200">
             <h3 className="text-lg lg:text-xl font-black text-slate-800 mb-6 lg:mb-8 flex items-center gap-3">
               <span className="text-blue-500">🏢</span> Business Identity

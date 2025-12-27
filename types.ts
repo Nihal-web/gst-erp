@@ -31,6 +31,14 @@ export interface User {
   plan?: 'free' | 'pro' | 'enterprise';
 }
 
+export interface PackagingUnit {
+  id: string;
+  productId: string;
+  unitName: string;
+  conversionFactor: number;
+  isDefault: boolean;
+}
+
 export interface Product {
   id: string;
   warehouseId?: string;
@@ -41,6 +49,8 @@ export interface Product {
   unit: string;
   stock: number;
   gstPercent: number;
+  alertThreshold?: number;
+  packagingUnits?: PackagingUnit[];
 }
 
 export interface Warehouse {
@@ -83,6 +93,7 @@ export interface InvoiceItem {
   unit: string;
   taxableValue: number;
   gstPercent: number;
+  conversionFactor?: number; // Conversion factor for packaging units (e.g. 10 for 10KG Box)
 }
 
 export interface Invoice {
