@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useApp } from '../AppContext';
 import { formatCurrency } from '../utils/helpers';
 import { Product, Warehouse } from '../types';
-import { fetchHSNDetails } from '../services/geminiService';
+import { fetchHSNDetails, HSNSuggestion } from '../services/geminiService';
 
 const Inventory: React.FC = () => {
   const { products, stockLogs, showAlert, updateProduct, addProduct, adjustStock, warehouses, addWarehouse, deleteWarehouse, deleteProduct } = useApp();
@@ -12,12 +12,13 @@ const Inventory: React.FC = () => {
   const [viewTab, setViewTab] = useState<'warehouse' | 'history'>('warehouse');
   const [selectedWarehouseId, setSelectedWarehouseId] = useState<string>('all');
   const [isFetchingHSN, setIsFetchingHSN] = useState(false);
+  const [aiSuggestions, setAiSuggestions] = useState<HSNSuggestion[]>([]);
 
   const [adjustData, setAdjustData] = useState({ quantity: 0, reason: 'Stock correction' });
 
   // New Product State
   const [newProduct, setNewProduct] = useState<Partial<Product>>({
-    name: '', hsn: '', rate: 0, unit: 'NOS', stock: 0, gstPercent: 18, warehouseId: '', alertThreshold: 10, packagingUnits: []
+    name: '', productName: '', description: '', type: 'GOODS', hsn: '', rate: 0, unit: 'NOS', stock: 0, gstPercent: 18, warehouseId: '', alertThreshold: 10, packagingUnits: []
   });
 
   // Temp state for adding a packaging unit
@@ -45,22 +46,35 @@ const Inventory: React.FC = () => {
   });
 
   const handleAIHSNFetch = async () => {
-    if (!newProduct.name || newProduct.name.length < 3) {
+    const searchName = newProduct.productName || newProduct.name;
+    if (!searchName || searchName.length < 3) {
       showAlert("Enter product name for AI lookup.", "error");
       return;
     }
     setIsFetchingHSN(true);
+    setAiSuggestions([]);
     try {
-      const result = await fetchHSNDetails(newProduct.name);
-      if (result) {
-        setNewProduct(prev => ({ ...prev, hsn: result.hsnCode, gstPercent: result.gstPercent }));
-        showAlert("HSN & GST% matched by AI ✨", "success");
+      const results = await fetchHSNDetails(searchName, newProduct.type || 'GOODS');
+      if (results && results.length > 0) {
+        setAiSuggestions(results);
+        showAlert("AI found matching HSN codes ✨", "success");
+      } else {
+        showAlert("No HSN found.", "info");
       }
     } catch (e) {
       showAlert("AI lookup failed.", "error");
     } finally {
       setIsFetchingHSN(false);
     }
+  };
+
+  const applySuggestion = (s: HSNSuggestion) => {
+    // Extract number from string rate e.g. "18%" -> 18, "0% (Exempt)" -> 0
+    const rateMatch = s.gstRate.match(/(\d+(\.\d+)?)/);
+    const rate = rateMatch ? parseFloat(rateMatch[0]) : 0;
+
+    setNewProduct(prev => ({ ...prev, hsn: s.hsnCode, gstPercent: rate }));
+    setAiSuggestions([]); // clear suggestions
   };
 
   const handleAddWarehouse = (e: React.FormEvent) => {
@@ -79,14 +93,17 @@ const Inventory: React.FC = () => {
 
   const handleAddNewProduct = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newProduct.name || !newProduct.hsn) {
-      showAlert("Name and HSN are required.", "error");
+    if (!newProduct.productName || !newProduct.hsn) {
+      showAlert("Product Name and HSN are required.", "error");
       return;
     }
 
     const product: Product = {
       id: window.crypto.randomUUID() || Math.random().toString(36).substr(2, 9),
-      name: newProduct.name!,
+      name: newProduct.name || newProduct.productName!,
+      productName: newProduct.productName!,
+      description: newProduct.description || '',
+      type: newProduct.type || 'GOODS',
       hsn: newProduct.hsn!,
       rate: Number(newProduct.rate) || 0,
       unit: newProduct.unit || 'NOS',
@@ -98,7 +115,7 @@ const Inventory: React.FC = () => {
     };
     addProduct(product);
     setShowAddModal(false);
-    setNewProduct({ name: '', hsn: '', rate: 0, unit: 'NOS', stock: 0, gstPercent: 18, warehouseId: '', alertThreshold: 10, packagingUnits: [] });
+    setNewProduct({ name: '', productName: '', description: '', type: 'GOODS', hsn: '', rate: 0, unit: 'NOS', stock: 0, gstPercent: 18, warehouseId: '', alertThreshold: 10, packagingUnits: [] });
   };
 
   const filteredProducts = selectedWarehouseId === 'all'
@@ -189,8 +206,9 @@ const Inventory: React.FC = () => {
                   {filteredProducts.map((product) => (
                     <tr key={product.id} className="hover:bg-slate-50/50 transition-colors group">
                       <td className="px-6 lg:px-8 py-4 lg:py-6">
-                        <p className="font-black text-slate-800 uppercase tracking-tight text-xs lg:text-sm truncate max-w-[200px] lg:max-w-none">{product.name}</p>
-                        <p className="text-[9px] text-slate-400 font-bold uppercase mt-1">HSN: {product.hsn}</p>
+                        <p className="font-black text-slate-800 uppercase tracking-tight text-xs lg:text-sm truncate max-w-[200px] lg:max-w-none">{product.productName || product.name}</p>
+                        <p className="text-[9px] text-slate-400 font-bold uppercase mt-1">{product.name !== product.productName ? product.name : `HSN: ${product.hsn}`}</p>
+                        {product.description && <p className="text-[8px] text-slate-300 italic mt-0.5 truncate max-w-[150px]">{product.description}</p>}
                       </td>
                       <td className="px-6 lg:px-8 py-4 lg:py-6 text-xs text-slate-500 font-black uppercase">
                         {warehouses.find(w => w.id === product.warehouseId)?.name || 'Unassigned'}
@@ -226,7 +244,7 @@ const Inventory: React.FC = () => {
       {
         showWarehouseModal && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
-            <div className="bg-white w-full max-w-md rounded-3xl p-8 animate-in zoom-in-95">
+            <div className="bg-white w-full max-w-md rounded-3xl p-8 animate-in zoom-in-95 max-h-[90vh] overflow-y-auto no-scrollbar">
               <h3 className="text-xl font-black text-slate-800 mb-6">Add Warehouse</h3>
               <form onSubmit={handleAddWarehouse} className="space-y-4">
                 <div>
@@ -269,87 +287,150 @@ const Inventory: React.FC = () => {
         )
       }
 
-      {/* Add Product Modal - Updated with Warehouse Selection */}
+      {/* Add Product Modal */}
       {
         showAddModal && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm overflow-y-auto no-scrollbar">
-            <div className="bg-white w-full max-w-lg rounded-3xl lg:rounded-[2.5rem] shadow-2xl p-6 lg:p-10 my-8 animate-in zoom-in-95">
-              <h3 className="text-xl lg:text-2xl font-black text-slate-800 mb-6">New Asset Registration</h3>
-              <form onSubmit={handleAddNewProduct} className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="sm:col-span-2">
-                  <label className="text-[9px] font-black uppercase text-slate-500 mb-1 block">Full Description</label>
-                  <input type="text" value={newProduct.name} onChange={e => setNewProduct({ ...newProduct, name: e.target.value })} className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2.5 lg:py-3 px-4 font-bold outline-none text-sm" />
-                </div>
-                <div>
-                  <label className="text-[9px] font-black uppercase text-slate-500 mb-1 block">HSN Code</label>
-                  <div className="flex gap-2">
-                    <input type="text" value={newProduct.hsn} onChange={e => setNewProduct({ ...newProduct, hsn: e.target.value })} className="flex-1 bg-slate-50 border border-slate-200 rounded-xl py-2.5 lg:py-3 px-4 font-bold outline-none text-sm" />
-                    <button type="button" onClick={handleAIHSNFetch} disabled={isFetchingHSN} className="bg-purple-50 text-purple-600 px-4 rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-purple-100 transition-all flex items-center gap-2">{isFetchingHSN ? '⏳' : '✨ AI'}</button>
-                  </div>
-                </div>
-                <div>
-                  <label className="text-[9px] font-black uppercase text-slate-500 mb-1 block">Warehouse Location</label>
-                  <select value={newProduct.warehouseId || ''} onChange={e => setNewProduct({ ...newProduct, warehouseId: e.target.value })} className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2.5 lg:py-3 px-4 font-bold outline-none text-sm">
-                    <option value="">Select Warehouse</option>
-                    {warehouses.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
-                  </select>
-                </div>
-                {/* Other inputs remain same... shortening for brevity in this replace block, in reality I'd keep them. 
-                  Wait, I need to include them to not break the UI. restoring them. */}
-                <div>
-                  <label className="text-[9px] font-black uppercase text-slate-500 mb-1 block">Unit</label>
-                  <select value={newProduct.unit} onChange={e => setNewProduct({ ...newProduct, unit: e.target.value })} className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2.5 lg:py-3 px-4 font-bold outline-none text-sm">
-                    <option value="NOS">NOS</option><option value="PCS">PCS</option><option value="KG">KG</option><option value="SET">SET</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="text-[9px] font-black uppercase text-slate-500 mb-1 block">Rate</label>
-                  <input type="number" value={newProduct.rate} onChange={e => setNewProduct({ ...newProduct, rate: Number(e.target.value) })} className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2.5 lg:py-3 px-4 font-bold outline-none text-sm" />
-                </div>
-                <div>
-                  <label className="text-[9px] font-black uppercase text-slate-500 mb-1 block">Stock</label>
-                  <input type="number" value={newProduct.stock} onChange={e => setNewProduct({ ...newProduct, stock: Number(e.target.value) })} className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2.5 lg:py-3 px-4 font-bold outline-none text-sm" />
-                </div>
-                <div>
-                  <label className="text-[9px] font-black uppercase text-slate-500 mb-1 block">Low Stock Alert</label>
-                  <input type="number" value={newProduct.alertThreshold} onChange={e => setNewProduct({ ...newProduct, alertThreshold: Number(e.target.value) })} className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2.5 lg:py-3 px-4 font-bold outline-none text-sm" />
-                </div>
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm overflow-hidden">
+            <div className="bg-white w-full max-w-lg rounded-3xl lg:rounded-[2.5rem] shadow-2xl flex flex-col max-h-[90vh] animate-in zoom-in-95">
+              <div className="p-6 lg:p-10 border-b border-slate-50 flex-shrink-0">
+                <h3 className="text-xl lg:text-2xl font-black text-slate-800">New Asset Registration</h3>
+              </div>
 
-                <div className="sm:col-span-2 flex gap-3 mt-4 lg:mt-6">
-                  <button type="button" onClick={() => setShowAddModal(false)} className="flex-1 py-3 lg:py-4 bg-slate-100 text-slate-600 rounded-xl lg:rounded-2xl font-black text-xs">Discard</button>
-                  <button type="submit" className="flex-1 py-3 lg:py-4 bg-blue-600 text-white rounded-xl lg:rounded-2xl font-black shadow-xl shadow-blue-100 text-xs">Register</button>
-                </div>
-
-                <div className="sm:col-span-2 pt-4 border-t border-slate-100 mt-2">
-                  <p className="text-[10px] font-black uppercase text-slate-500 mb-3">Packaging Units (Optional)</p>
-                  <div className="flex gap-2 mb-2 items-end bg-slate-50 p-3 rounded-xl">
-                    <div className="flex-1">
-                      <label className="text-[8px] font-black uppercase text-slate-400">Unit Name</label>
-                      <input type="text" placeholder="e.g. Box" value={newPkgUnit.unitName} onChange={e => setNewPkgUnit({ ...newPkgUnit, unitName: e.target.value })} className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold" />
-                    </div>
-                    <div className="w-24">
-                      <label className="text-[8px] font-black uppercase text-slate-400">Qty ({newProduct.unit || 'Base'})</label>
-                      <input type="number" placeholder="10" value={newPkgUnit.conversionFactor} onChange={e => setNewPkgUnit({ ...newPkgUnit, conversionFactor: Number(e.target.value) })} className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold" />
-                    </div>
-                    <button type="button" onClick={addPkgUnit} className="bg-slate-800 text-white px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider hover:bg-black">+ Add</button>
-                  </div>
-                  {/* List added units */}
-                  <div className="space-y-1">
-                    {newProduct.packagingUnits?.map((u, idx) => (
-                      <div key={idx} className="flex justify-between items-center text-xs font-bold text-slate-600 bg-white border border-slate-100 px-3 py-2 rounded-lg">
-                        <span>1 {u.unitName} = {u.conversionFactor} {newProduct.unit}</span>
-                        <button type="button" onClick={() => removePkgUnit(idx)} className="text-red-500 hover:text-red-700">✕</button>
+              <div className="flex-1 overflow-y-auto p-6 lg:p-10 no-scrollbar">
+                <form id="add-product-form" onSubmit={handleAddNewProduct} className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="sm:col-span-2 flex gap-4 pb-2">
+                    <label className={`flex-1 flex items-center gap-2 cursor-pointer p-3 rounded-xl border transition-all ${newProduct.type === 'GOODS' ? 'bg-blue-50 border-blue-200 ring-1 ring-blue-500' : 'bg-slate-50 border-slate-100'}`}>
+                      <input type="radio" name="prodType" checked={newProduct.type === 'GOODS' || !newProduct.type} onChange={() => setNewProduct({ ...newProduct, type: 'GOODS' })} className="hidden" />
+                      <span className="text-lg">📦</span>
+                      <div>
+                        <p className="text-[10px] font-black uppercase text-slate-500">Type</p>
+                        <p className="text-xs font-black text-slate-800">Goods</p>
                       </div>
-                    ))}
+                    </label>
+                    <label className={`flex-1 flex items-center gap-2 cursor-pointer p-3 rounded-xl border transition-all ${newProduct.type === 'SERVICES' ? 'bg-blue-50 border-blue-200 ring-1 ring-blue-500' : 'bg-slate-50 border-slate-100'}`}>
+                      <input type="radio" name="prodType" checked={newProduct.type === 'SERVICES'} onChange={() => setNewProduct({ ...newProduct, type: 'SERVICES' })} className="hidden" />
+                      <span className="text-lg">🛠️</span>
+                      <div>
+                        <p className="text-[10px] font-black uppercase text-slate-500">Type</p>
+                        <p className="text-xs font-black text-slate-800">Services</p>
+                      </div>
+                    </label>
                   </div>
-                </div>
-              </form>
+
+                  <div className="sm:col-span-2">
+                    <label className="text-[9px] font-black uppercase text-slate-500 mb-1 block">Product Name (Simple)</label>
+                    <input type="text" value={newProduct.productName} onChange={e => setNewProduct({ ...newProduct, productName: e.target.value })} className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2.5 lg:py-3 px-4 font-bold outline-none text-sm" placeholder="e.g. Portland Cement" />
+                  </div>
+
+                  <div className="sm:col-span-2">
+                    <label className="text-[9px] font-black uppercase text-slate-500 mb-1 block">Full Description / Goods Name</label>
+                    <input type="text" value={newProduct.name} onChange={e => setNewProduct({ ...newProduct, name: e.target.value })} className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2.5 lg:py-3 px-4 font-bold outline-none text-sm" placeholder="e.g. Portland Cement 50kg Grade 43" />
+                  </div>
+
+                  <div className="sm:col-span-2">
+                    <label className="text-[9px] font-black uppercase text-slate-500 mb-1 block">Additional Details (Optional)</label>
+                    <input type="text" value={newProduct.description} onChange={e => setNewProduct({ ...newProduct, description: e.target.value })} className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2.5 lg:py-3 px-4 font-bold outline-none text-sm" placeholder="e.g. Batch #45, Exp 2026" />
+                  </div>
+
+                  <div className="relative sm:col-span-2">
+                    <label className="text-[9px] font-black uppercase text-slate-500 mb-1 block">{newProduct.type === 'SERVICES' ? 'SAC Code' : 'HSN Code'}</label>
+                    <div className="flex gap-2">
+                      <input type="text" value={newProduct.hsn} onChange={e => setNewProduct({ ...newProduct, hsn: e.target.value })} className="flex-1 bg-slate-50 border border-slate-200 rounded-xl py-2.5 lg:py-3 px-4 font-bold outline-none text-sm" placeholder={newProduct.type === 'SERVICES' ? '99xxxx' : 'xxxx'} />
+                      <button type="button" onClick={handleAIHSNFetch} disabled={isFetchingHSN} className="bg-purple-50 text-purple-600 px-4 rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-purple-100 transition-all flex items-center gap-2 border border-purple-100 shadow-sm whitespace-nowrap">
+                        {isFetchingHSN ? '⏳...' : '✨ Auto'}
+                      </button>
+                    </div>
+
+                    {/* AI Suggestions Table UI */}
+                    {aiSuggestions.length > 0 && (
+                      <div className="absolute top-full left-0 right-0 bg-slate-900 text-white rounded-xl shadow-2xl z-50 mt-2 overflow-hidden animate-in fade-in slide-in-from-top-2 border border-slate-700">
+                        <div className="bg-gradient-to-r from-purple-600 to-blue-600 px-4 py-2 flex justify-between items-center">
+                          <span className="text-[10px] font-black uppercase tracking-widest text-white">✨ AI Recommendations</span>
+                          <button type="button" onClick={() => setAiSuggestions([])} className="text-white hover:text-red-200">✕</button>
+                        </div>
+
+                        <table className="w-full text-left border-collapse">
+                          <tbody className="divide-y divide-white/5">
+                            {aiSuggestions.map((s, idx) => (
+                              <tr key={idx} onClick={() => applySuggestion(s)} className="hover:bg-white/10 cursor-pointer transition-colors group">
+                                <td className="p-3">
+                                  <p className="font-bold text-xs text-slate-200 group-hover:text-white line-clamp-1">{s.description}</p>
+                                  <div className="flex gap-2 mt-1">
+                                    <span className="text-blue-300 font-mono text-[10px]">{s.hsnCode}</span>
+                                    <span className="text-emerald-300 font-black text-[10px]">{s.gstRate}</span>
+                                  </div>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="sm:col-span-2">
+                    <label className="text-[9px] font-black uppercase text-slate-500 mb-1 block">Warehouse Location</label>
+                    <select value={newProduct.warehouseId || ''} onChange={e => setNewProduct({ ...newProduct, warehouseId: e.target.value })} className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2.5 lg:py-3 px-4 font-bold outline-none text-sm">
+                      <option value="">Select Warehouse</option>
+                      {warehouses.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="text-[9px] font-black uppercase text-slate-500 mb-1 block">Unit</label>
+                    <select value={newProduct.unit} onChange={e => setNewProduct({ ...newProduct, unit: e.target.value })} className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2.5 lg:py-3 px-4 font-bold outline-none text-sm">
+                      <option value="NOS">NOS</option><option value="PCS">PCS</option><option value="KG">KG</option><option value="SET">SET</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-[9px] font-black uppercase text-slate-500 mb-1 block">Rate</label>
+                    <input type="number" value={newProduct.rate} onChange={e => setNewProduct({ ...newProduct, rate: Number(e.target.value) })} className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2.5 lg:py-3 px-4 font-bold outline-none text-sm" />
+                  </div>
+                  <div>
+                    <label className="text-[9px] font-black uppercase text-slate-500 mb-1 block">Stock</label>
+                    <input type="number" value={newProduct.stock} onChange={e => setNewProduct({ ...newProduct, stock: Number(e.target.value) })} className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2.5 lg:py-3 px-4 font-bold outline-none text-sm" />
+                  </div>
+                  <div>
+                    <label className="text-[9px] font-black uppercase text-slate-500 mb-1 block">Low Stock Alert</label>
+                    <input type="number" value={newProduct.alertThreshold} onChange={e => setNewProduct({ ...newProduct, alertThreshold: Number(e.target.value) })} className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2.5 lg:py-3 px-4 font-bold outline-none text-sm" />
+                  </div>
+
+                  <div className="sm:col-span-2 pt-4 border-t border-slate-100 mt-2">
+                    <p className="text-[10px] font-black uppercase text-slate-500 mb-3">Packaging Units (Optional)</p>
+                    <div className="flex flex-col sm:flex-row gap-2 mb-2 bg-slate-50 p-3 rounded-xl">
+                      <div className="flex-1">
+                        <label className="text-[8px] font-black uppercase text-slate-400">Name (e.g. Box)</label>
+                        <input type="text" value={newPkgUnit.unitName} onChange={e => setNewPkgUnit({ ...newPkgUnit, unitName: e.target.value })} className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold" />
+                      </div>
+                      <div className="sm:w-24">
+                        <label className="text-[8px] font-black uppercase text-slate-400">Qty ({newProduct.unit || 'Base'})</label>
+                        <input type="number" value={newPkgUnit.conversionFactor} onChange={e => setNewPkgUnit({ ...newPkgUnit, conversionFactor: Number(e.target.value) })} className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold" />
+                      </div>
+                      <button type="button" onClick={addPkgUnit} className="bg-slate-800 text-white px-3 py-2 rounded-lg text-[10px] font-black uppercase tracking-wider h-10 self-end w-full sm:w-auto">+ Add</button>
+                    </div>
+                    {/* List added units */}
+                    <div className="space-y-1">
+                      {newProduct.packagingUnits?.map((u, idx) => (
+                        <div key={idx} className="flex justify-between items-center text-xs font-bold text-slate-600 bg-white border border-slate-100 px-3 py-2 rounded-lg">
+                          <span>1 {u.unitName} = {u.conversionFactor} {newProduct.unit}</span>
+                          <button type="button" onClick={() => removePkgUnit(idx)} className="text-red-500 hover:text-red-700">✕</button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </form>
+              </div>
+
+              <div className="p-6 lg:p-10 border-t border-slate-50 flex gap-3 flex-shrink-0 bg-slate-50/10">
+                <button type="button" onClick={() => setShowAddModal(false)} className="flex-1 py-3 lg:py-4 bg-slate-100 text-slate-600 rounded-xl lg:rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-slate-200 transition-all">Discard</button>
+                <button type="submit" form="add-product-form" className="flex-1 py-3 lg:py-4 bg-blue-600 text-white rounded-xl lg:rounded-2xl font-black shadow-xl shadow-blue-100 text-xs uppercase tracking-widest hover:bg-blue-700 transition-all active:scale-95">Register Asset</button>
+              </div>
             </div>
           </div>
         )
       }
 
-      {/* Adjust Modal (Simplified for brevity, assuming standard implementation) */}
+      {/* Adjust Modal */}
       {
         showAdjustModal && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
@@ -370,4 +451,3 @@ const Inventory: React.FC = () => {
 };
 
 export default Inventory;
-

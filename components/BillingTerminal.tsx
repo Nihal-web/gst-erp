@@ -1,5 +1,6 @@
-
 import React, { useState } from 'react';
+import jsPDF from 'jspdf';
+import html2canvas from 'html2canvas';
 import { Customer, Product, InvoiceItem, Invoice, InvoiceType } from '../types';
 import InvoiceView from './InvoiceView';
 import { formatCurrency } from '../utils/helpers';
@@ -22,6 +23,7 @@ const BillingTerminal: React.FC = () => {
   const [exportType, setExportType] = useState<'WITH_PAYMENT' | 'WITHOUT_PAYMENT'>('WITHOUT_PAYMENT');
   const [shippingBill, setShippingBill] = useState('');
   const [shippingDate, setShippingDate] = useState('');
+
 
   const addItem = () => {
     setItems([...items, {
@@ -75,15 +77,21 @@ const BillingTerminal: React.FC = () => {
 
     setIsFetchingHSN(index);
     try {
-      const result = await fetchHSNDetails(query);
-      if (result) {
+      const results = await fetchHSNDetails(query, invoiceType);
+      if (results && results.length > 0) {
+        const best = results[0];
+        const rateMatch = best.gstRate.match(/(\d+(\.\d+)?)/);
+        const rate = rateMatch ? parseFloat(rateMatch[0]) : 0;
+
         if (invoiceType === InvoiceType.SERVICES) {
-          updateItem(index, 'sac', result.hsnCode);
+          updateItem(index, 'sac', best.hsnCode);
         } else {
-          updateItem(index, 'hsn', result.hsnCode);
+          updateItem(index, 'hsn', best.hsnCode);
         }
-        updateItem(index, 'gstPercent', result.gstPercent);
-        showAlert(`${invoiceType === InvoiceType.SERVICES ? 'SAC' : 'HSN'} found!`, "success");
+        updateItem(index, 'gstPercent', rate);
+        showAlert(`AI detected ${best.hsnCode} — ${rate}% GST`, "success");
+      } else {
+        showAlert("No matching code found.", "error");
       }
     } finally {
       setIsFetchingHSN(null);
@@ -200,20 +208,52 @@ const BillingTerminal: React.FC = () => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  const handlePrint = () => {
+
+  const handlePrint = async () => {
     setIsPrinting(true);
-    const originalTitle = document.title;
-    if (invoiceData) {
-      document.title = invoiceData.invoiceNo;
+    const invoiceElement = document.querySelector('.invoice-container') as HTMLElement;
+
+    if (!invoiceElement) {
+      showAlert("Could not find invoice to generate PDF.", "error");
+      setIsPrinting(false);
+      return;
     }
 
-    showAlert("Optimizing PDF rendering...", "info");
+    try {
+      showAlert("Generating high-quality PDF...", "info");
 
-    setTimeout(() => {
-      window.print();
-      document.title = originalTitle;
+      // Wait a moment for UI to stabilize (optional)
+      await new Promise(resolve => setTimeout(resolve, 500));
+
+      const canvas = await html2canvas(invoiceElement, {
+        scale: 2, // Higher scale for better quality
+        useCORS: true,
+        logging: false,
+        backgroundColor: '#ffffff'
+      });
+
+      const imgData = canvas.toDataURL('image/png');
+      const pdf = new jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: 'a4'
+      });
+
+      const imgWidth = 210; // A4 width in mm
+      const imgHeight = (canvas.height * imgWidth) / canvas.width;
+
+      pdf.addImage(imgData, 'PNG', 0, 0, imgWidth, imgHeight);
+
+      // Auto-download (works on mobile too)
+      pdf.save(`${invoiceData?.invoiceNo || 'invoice'}.pdf`);
+
+      showAlert("Invoice PDF downloaded.", "success");
+    } catch (error) {
+      console.error("PDF Generation Error:", error);
+      showAlert("Failed to generate PDF.", "error");
+    } finally {
       setIsPrinting(false);
-    }, 1000);
+    }
   };
 
   if (showInvoice && invoiceData) {
@@ -236,8 +276,8 @@ const BillingTerminal: React.FC = () => {
             </button>
           </div>
         </div>
-        <div className="w-full overflow-x-auto no-scrollbar py-4 lg:py-0">
-          <div className="invoice-container inline-block origin-top-left scale-[0.45] sm:scale-[0.7] lg:scale-100 min-w-max rounded-xl shadow-2xl bg-white border border-slate-200 print:shadow-none print:border-none print:rounded-none print:scale-100 print:origin-top-left print:block">
+        <div className="w-full overflow-x-auto no-scrollbar py-4 lg:py-0 flex justify-center">
+          <div className="invoice-container origin-top scale-[0.35] sm:scale-[0.55] md:scale-[0.75] lg:scale-100 min-w-max rounded-xl shadow-2xl bg-white border border-slate-200 print:shadow-none print:border-none print:rounded-none print:scale-100 print:origin-top-left print:block">
             <InvoiceView invoice={invoiceData} firm={firm} />
           </div>
         </div>
@@ -252,7 +292,7 @@ const BillingTerminal: React.FC = () => {
       <div className="flex flex-col sm:flex-row sm:justify-between sm:items-end gap-4 no-print">
         <div>
           <h2 className="text-2xl lg:text-3xl font-black text-slate-800 tracking-tight">Invoice Center</h2>
-          <p className="text-slate-400 text-sm font-medium">Gujarat Freight Tools ERP — GST Ready.</p>
+          <p className="text-slate-400 text-sm font-medium">GST Ready Billing & Stock Management.</p>
         </div>
         <div className="flex bg-slate-100 p-1.5 rounded-2xl border border-slate-200 self-start sm:self-auto">
           <button
@@ -380,59 +420,57 @@ const BillingTerminal: React.FC = () => {
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 lg:gap-8 no-print">
-            <div className="lg:col-span-2 bg-white p-6 lg:p-8 rounded-3xl lg:rounded-[2.5rem] shadow-sm border border-slate-200">
-              <div className="flex items-center justify-between mb-6">
-                <h3 className="text-lg font-black text-slate-800">Target Client</h3>
-              </div>
-              <select
-                className="w-full bg-white border border-slate-300 rounded-2xl py-3 lg:py-4 px-4 lg:px-5 text-sm font-bold text-slate-800 focus:ring-4 focus:ring-blue-100 transition-all outline-none shadow-sm cursor-pointer"
-                onChange={(e) => setSelectedCustomer(customers.find(c => c.id === e.target.value) || null)}
-                value={selectedCustomer?.id || ''}
-              >
-                <option value="">Select from directory...</option>
-                {customers.map(c => (
-                  <option key={c.id} value={c.id}>{c.name} — {c.gstin}</option>
-                ))}
-              </select>
-              {selectedCustomer && (
-                <div className="mt-6 p-5 lg:p-6 bg-slate-50 rounded-2xl grid grid-cols-1 sm:grid-cols-2 gap-4 border border-slate-200 animate-in fade-in slide-in-from-top-2">
-                  <div>
-                    <p className="text-[9px] text-slate-400 uppercase font-black tracking-widest">Client Tax ID</p>
-                    <p className="font-bold text-slate-800 text-xs">{selectedCustomer.gstin}</p>
-                  </div>
-                  <div>
-                    <p className="text-[9px] text-slate-400 uppercase font-black tracking-widest">Supply State</p>
-                    <p className="font-bold text-slate-800 text-xs">{selectedCustomer.state} ({selectedCustomer.stateCode})</p>
-                  </div>
-                  <div className="sm:col-span-2">
-                    <p className="text-[9px] text-slate-400 uppercase font-black tracking-widest">Dispatch Detail</p>
-                    <p className="font-bold text-slate-800 text-[10px] leading-relaxed line-clamp-2">{selectedCustomer.address}</p>
-                  </div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 lg:gap-8 no-print">
+              <div className="md:col-span-2 bg-white p-6 lg:p-8 rounded-3xl lg:rounded-[2.5rem] shadow-sm border border-slate-200">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-black text-slate-800 tracking-tight">Select Customer</h3>
                 </div>
-              )}
-            </div>
+                <select
+                  className="w-full bg-slate-50 border border-slate-100 rounded-2xl py-3 lg:py-4 px-4 lg:px-5 text-sm font-bold text-slate-800 focus:ring-4 focus:ring-blue-100 transition-all outline-none shadow-sm cursor-pointer"
+                  onChange={(e) => setSelectedCustomer(customers.find(c => c.id === e.target.value) || null)}
+                  value={selectedCustomer?.id || ''}
+                >
+                  <option value="">Search customer directory...</option>
+                  {customers.map(c => (
+                    <option key={c.id} value={c.id}>{c.name} — {c.gstin}</option>
+                  ))}
+                </select>
+                {selectedCustomer && (
+                  <div className="mt-4 p-4 lg:p-6 bg-slate-50/50 rounded-2xl grid grid-cols-1 sm:grid-cols-2 gap-4 border border-slate-100 animate-in fade-in slide-in-from-top-2">
+                    <div className="space-y-1">
+                      <p className="text-[9px] text-slate-400 uppercase font-black tracking-widest">Tax Identity</p>
+                      <p className="font-bold text-slate-800 text-xs truncate">{selectedCustomer.gstin}</p>
+                    </div>
+                    <div className="space-y-1">
+                      <p className="text-[9px] text-slate-400 uppercase font-black tracking-widest">Location</p>
+                      <p className="font-bold text-slate-800 text-xs">{selectedCustomer.state} ({selectedCustomer.stateCode})</p>
+                    </div>
+                  </div>
+                )}
+              </div>
 
-            <div className="bg-white p-6 lg:p-8 rounded-3xl lg:rounded-[2.5rem] shadow-sm border border-slate-200 flex flex-col justify-between overflow-hidden">
-              <div>
-                <h3 className="text-lg font-black text-slate-800 mb-6">Quick Preview</h3>
-                <div className="space-y-4">
-                  <div className="flex justify-between items-center gap-2">
-                    <span className="text-sm font-bold text-slate-500">Taxable</span>
-                    <span className="text-sm font-black text-slate-800 truncate">₹{formatCurrency(items.reduce((sum, item) => sum + item.taxableValue, 0))}</span>
-                  </div>
-                  <div className="flex justify-between items-center gap-2">
-                    <span className="text-sm font-bold text-slate-500">GST Sum</span>
-                    <span className="text-sm font-black text-slate-800 truncate">
-                      ₹{formatCurrency(items.reduce((sum, item) => sum + (invoiceType === InvoiceType.EXPORT && exportType === 'WITHOUT_PAYMENT' ? 0 : (item.taxableValue * (item.gstPercent / 100))), 0))}
-                    </span>
+              <div className="bg-white p-6 lg:p-8 rounded-3xl lg:rounded-[2.5rem] shadow-sm border border-slate-200 flex flex-col justify-between overflow-hidden bg-gradient-to-br from-white to-slate-50">
+                <div>
+                  <h3 className="text-lg font-black text-slate-800 mb-4 tracking-tight">Summary</h3>
+                  <div className="space-y-3">
+                    <div className="flex justify-between items-center gap-2">
+                      <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Subtotal</span>
+                      <span className="text-sm font-black text-slate-800 truncate">₹{formatCurrency(items.reduce((sum, item) => sum + item.taxableValue, 0))}</span>
+                    </div>
+                    <div className="flex justify-between items-center gap-2">
+                      <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Tax Sum</span>
+                      <span className="text-sm font-black text-slate-800 truncate">
+                        ₹{formatCurrency(items.reduce((sum, item) => sum + (invoiceType === InvoiceType.EXPORT && exportType === 'WITHOUT_PAYMENT' ? 0 : (item.taxableValue * (item.gstPercent / 100))), 0))}
+                      </span>
+                    </div>
                   </div>
                 </div>
-              </div>
-              <div className="pt-6 border-t border-slate-100 mt-6">
-                <p className="text-[9px] text-slate-400 uppercase font-black mb-1">Net Payable</p>
-                <span className="font-black text-blue-600 tracking-tighter block truncate text-3xl">
-                  ₹{formatCurrency(totalPayable)}
-                </span>
+                <div className="pt-4 border-t border-slate-200 mt-4">
+                  <p className="text-[10px] text-slate-400 uppercase font-black mb-1 tracking-widest">Total Payable</p>
+                  <span className="font-black text-blue-600 tracking-tighter block truncate text-2xl lg:text-3xl">
+                    ₹{formatCurrency(totalPayable)}
+                  </span>
+                </div>
               </div>
             </div>
           </div>
@@ -561,7 +599,7 @@ const BillingTerminal: React.FC = () => {
                 </tbody>
               </table>
             </div>
-            <div className="p-6 lg:p-8 border-t border-slate-100 flex justify-end">
+            <div className="p-6 lg:p-8 border-t border-slate-100 flex justify-end sticky bottom-0 bg-white/80 backdrop-blur-md z-10 shadow-[0_-4px_20px_rgba(0,0,0,0.03)] lg:shadow-none lg:static lg:bg-transparent">
               <button
                 onClick={generateInvoice}
                 className="w-full sm:w-auto bg-blue-600 text-white px-12 py-3.5 rounded-2xl hover:bg-blue-700 font-black shadow-xl shadow-blue-100 transition-all active:scale-95"

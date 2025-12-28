@@ -24,6 +24,7 @@ const PlatformAdmin: React.FC = () => {
   const { switchRole, user } = useAuth();
 
   // States
+  const [activeTab, setActiveTab] = React.useState<'overview' | 'tenants' | 'config'>('overview');
   const [editingShop, setEditingShop] = React.useState<string | null>(null);
   const [shopSettings, setShopSettings] = React.useState<FirmSettings | null>(null);
   const [isSaving, setIsSaving] = React.useState(false);
@@ -36,15 +37,8 @@ const PlatformAdmin: React.FC = () => {
 
   if (!globalStats) return <div className="p-10 text-slate-400 font-black tracking-widest animate-pulse flex flex-col items-center justify-center min-h-[60vh] gap-4">
     <div className="w-16 h-16 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
-    SYNCING GLOBAL RECO...
+    SYNCING MASTER CLOUD...
   </div>;
-
-  const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444'];
-  const planData = [
-    { name: 'Free', value: globalStats.allUsers.filter(u => u.plan === 'free').length || 0 },
-    { name: 'Pro', value: globalStats.allUsers.filter(u => u.plan === 'pro').length || 1 },
-    { name: 'Ent', value: globalStats.allUsers.filter(u => u.plan === 'enterprise').length || 0 },
-  ];
 
   const handleRoleSwitch = (role: UserRole) => {
     switchRole(role);
@@ -143,124 +137,182 @@ const PlatformAdmin: React.FC = () => {
   };
 
   return (
-    <div className="space-y-6 lg:space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-700">
-      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-end gap-6">
+    <div className="space-y-6 lg:space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-end gap-6 border-b border-slate-100 pb-8">
         <div>
-          <h2 className="text-2xl lg:text-3xl font-black text-slate-800 tracking-tight">Platform Command Center</h2>
-          <p className="text-slate-400 text-sm font-medium tracking-tight">Shopify-style multi-tenant orchestration.</p>
+          <h2 className="text-2xl lg:text-3xl font-black text-slate-800 tracking-tight">Master Control</h2>
+          <p className="text-slate-400 text-sm font-medium tracking-tight">Multi-tenant orchestration layer.</p>
+        </div>
+        <div className="flex gap-1 bg-slate-100 p-1.5 rounded-2xl shadow-inner">
+          <button onClick={() => setActiveTab('overview')} className={`px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'overview' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>Overview</button>
+          <button onClick={() => setActiveTab('tenants')} className={`px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'tenants' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>Tenants</button>
+          <button onClick={() => setActiveTab('config')} className={`px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'config' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>Config</button>
         </div>
       </div>
 
-      <div className="bg-slate-900 p-6 lg:p-10 rounded-3xl lg:rounded-[2.5rem] shadow-2xl text-white relative overflow-hidden">
-        <div className="absolute top-0 right-0 w-64 h-64 bg-blue-500/10 blur-[100px] rounded-full translate-x-1/2 -translate-y-1/2"></div>
-        <div className="relative z-10 flex flex-col lg:flex-row justify-between gap-10">
-          <div className="flex-1">
-            <div className="flex items-center gap-3 mb-4 lg:mb-6">
-              <span className="text-xl lg:text-2xl">🎭</span>
-              <h3 className="text-lg lg:text-xl font-black uppercase tracking-widest">Context Engine</h3>
+      {activeTab === 'overview' && (
+        <div className="space-y-8 animate-in fade-in zoom-in-95 duration-500">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-6">
+            <div className="bg-white p-6 lg:p-10 rounded-3xl border border-slate-100 shadow-sm hover:shadow-xl transition-all group">
+              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 group-hover:text-blue-600 transition-colors">Active Shops</p>
+              <h3 className="text-3xl lg:text-4xl font-black text-slate-800">{globalStats.totalShops}</h3>
             </div>
-            <p className="text-slate-400 text-[11px] lg:text-sm font-medium mb-6 lg:mb-8 max-w-xl leading-relaxed">
-              Switch your active role context to test shop-level views.
-              <span className="text-blue-400"> Current session only.</span>
-            </p>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 lg:gap-4">
-              <button onClick={() => handleRoleSwitch(UserRole.ADMIN)} className="bg-white/10 hover:bg-white/20 border border-white/10 py-3 lg:py-4 px-3 lg:px-6 rounded-2xl font-black text-[9px] lg:text-[10px] uppercase tracking-widest transition-all text-center">Shop Owner</button>
-              <button onClick={() => handleRoleSwitch(UserRole.SALES)} className="bg-white/10 hover:bg-white/20 border border-white/10 py-3 lg:py-4 px-3 lg:px-6 rounded-2xl font-black text-[9px] lg:text-[10px] uppercase tracking-widest transition-all text-center">Billing</button>
-              <button onClick={() => handleRoleSwitch(UserRole.ACCOUNTANT)} className="bg-white/10 hover:bg-white/20 border border-white/10 py-3 lg:py-4 px-3 lg:px-6 rounded-2xl font-black text-[9px] lg:text-[10px] uppercase tracking-widest transition-all text-center">Accountant</button>
-              <button onClick={() => handleRoleSwitch(UserRole.PLATFORM_ADMIN)} disabled={user?.role === UserRole.PLATFORM_ADMIN} className={`py-3 lg:py-4 px-3 lg:px-6 rounded-2xl font-black text-[9px] lg:text-[10px] uppercase tracking-widest transition-all text-center ${user?.role === UserRole.PLATFORM_ADMIN ? 'bg-blue-600/30 text-white/50 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700 text-white shadow-lg'}`}>Master</button>
+            <div className="bg-white p-6 lg:p-10 rounded-3xl border border-slate-100 shadow-sm hover:shadow-xl transition-all group">
+              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 group-hover:text-blue-600 transition-colors">Total Accounts</p>
+              <h3 className="text-3xl lg:text-4xl font-black text-slate-800">{globalStats.allUsers.length}</h3>
+            </div>
+            <div className="bg-blue-600 p-6 lg:p-10 rounded-3xl shadow-2xl text-white relative overflow-hidden group">
+              <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 blur-3xl rounded-full -translate-x-10 -translate-y-10 group-hover:scale-150 transition-transform"></div>
+              <p className="text-[10px] font-black text-white/70 uppercase tracking-widest mb-1 relative z-10">Total GMV</p>
+              <h3 className="text-3xl lg:text-4xl font-black tracking-tighter truncate relative z-10">₹{formatCurrency(globalStats.totalRevenue)}</h3>
+            </div>
+            <div className="bg-white p-6 lg:p-10 rounded-3xl border border-slate-100 shadow-sm flex flex-col justify-center">
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 bg-green-500 rounded-full animate-pulse"></div>
+                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Health</p>
+              </div>
+              <h3 className="text-2xl lg:text-3xl font-black text-slate-800 mt-1">OPTIMAL</h3>
             </div>
           </div>
-          <div className="lg:w-1/3 flex flex-col gap-4">
-            <div className="bg-white/5 p-6 rounded-3xl border border-white/5">
-              <h4 className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-4">Master Toggles</h4>
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <span className="text-[11px] font-black uppercase tracking-wider">Maintenance Mode</span>
-                  <button onClick={() => handleToggleSystem('maintenance_mode')} className={`w-10 h-5 rounded-full relative transition-all ${globalStats.systemSettings?.maintenance_mode ? 'bg-red-500' : 'bg-slate-700'}`}>
-                    <div className={`absolute top-1 w-3 h-3 bg-white rounded-full transition-all ${globalStats.systemSettings?.maintenance_mode ? 'left-6' : 'left-1'}`}></div>
-                  </button>
+
+          <div className="bg-slate-900 p-8 lg:p-12 rounded-[2.5rem] shadow-2xl text-white relative overflow-hidden">
+            <div className="absolute top-0 right-0 w-96 h-96 bg-blue-500/10 blur-[120px] rounded-full translate-x-1/2 -translate-y-1/2"></div>
+            <div className="relative z-10 flex flex-col lg:flex-row justify-between gap-12">
+              <div className="flex-1">
+                <div className="flex items-center gap-4 mb-6">
+                  <div className="w-12 h-12 bg-white/10 rounded-2xl flex items-center justify-center text-2xl">🎭</div>
+                  <h3 className="text-xl lg:text-2xl font-black uppercase tracking-widest">Identity Engine</h3>
                 </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-[11px] font-black uppercase tracking-wider">Public Signups</span>
-                  <button onClick={() => handleToggleSystem('signups_enabled')} className={`w-10 h-5 rounded-full relative transition-all ${globalStats.systemSettings?.signups_enabled ? 'bg-blue-600' : 'bg-slate-700'}`}>
-                    <div className={`absolute top-1 w-3 h-3 bg-white rounded-full transition-all ${globalStats.systemSettings?.signups_enabled ? 'left-6' : 'left-1'}`}></div>
-                  </button>
+                <p className="text-slate-400 text-sm font-medium mb-10 max-w-xl leading-relaxed">
+                  Switch your session context to any role to assist users or verify permissions.
+                  <span className="text-blue-400 font-bold block mt-2">Changes are ephemeral and persistent for current session only.</span>
+                </p>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                  <button onClick={() => handleRoleSwitch(UserRole.ADMIN)} className="bg-white/5 hover:bg-white/10 border border-white/10 py-5 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all shadow-sm">Shop Owner</button>
+                  <button onClick={() => handleRoleSwitch(UserRole.SALES)} className="bg-white/5 hover:bg-white/10 border border-white/10 py-5 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all shadow-sm">Billing Desk</button>
+                  <button onClick={() => handleRoleSwitch(UserRole.ACCOUNTANT)} className="bg-white/5 hover:bg-white/10 border border-white/10 py-5 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all shadow-sm">Accountant</button>
+                  <button onClick={() => handleRoleSwitch(UserRole.PLATFORM_ADMIN)} disabled={user?.role === UserRole.PLATFORM_ADMIN} className={`py-5 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all shadow-lg ${user?.role === UserRole.PLATFORM_ADMIN ? 'bg-blue-600/30 text-white/50 cursor-not-allowed border border-white/5' : 'bg-blue-600 hover:bg-blue-700 text-white border border-blue-500 font-black'}`}>Restore Master</button>
                 </div>
               </div>
             </div>
           </div>
         </div>
-      </div>
+      )}
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-6">
-        <div className="bg-white p-6 lg:p-8 rounded-3xl border border-slate-50 shadow-sm">
-          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Active Shops</p>
-          <h3 className="text-2xl lg:text-3xl font-black text-slate-800">{globalStats.totalShops}</h3>
+      {activeTab === 'tenants' && (
+        <div className="animate-in fade-in slide-in-from-right-4 duration-500 h-full">
+          <div className="bg-white rounded-[2rem] border border-slate-100 shadow-sm overflow-hidden flex flex-col">
+            <div className="p-8 border-b border-slate-50 bg-slate-50/30 flex justify-between items-center">
+              <div>
+                <h3 className="font-black text-slate-800 text-sm">Tenant Directory</h3>
+                <p className="text-[10px] font-bold text-slate-400 mt-1 uppercase">Central Shop Registry</p>
+              </div>
+              <div className="flex gap-3">
+                <div className="flex items-center gap-2 bg-white px-4 py-2 rounded-xl border border-slate-200">
+                  <span className="w-2 h-2 bg-amber-400 rounded-full animate-pulse"></span>
+                  <span className="text-[9px] font-black text-slate-400 uppercase">Ghost Detection Active</span>
+                </div>
+              </div>
+            </div>
+            <div className="overflow-x-auto no-scrollbar">
+              <table className="w-full text-left min-w-[1000px]">
+                <thead>
+                  <tr className="text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-50 bg-slate-50/20">
+                    <th className="px-8 py-6">Shop Entity</th>
+                    <th className="px-8 py-6">Identity</th>
+                    <th className="px-8 py-6 text-center">Plan</th>
+                    <th className="px-8 py-6 text-right">Metrics</th>
+                    <th className="px-8 py-6 text-center">Status</th>
+                    <th className="px-8 py-6 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-50">
+                  {globalStats.allUsers.filter(u => u.role === 'ADMIN' || (u as any).isGhost).sort((a: any, b: any) => (b.revenue || 0) - (a.revenue || 0)).map((shopUser: any) => (
+                    <tr key={shopUser.id} className={`hover:bg-slate-50/50 transition-colors group ${shopUser.isGhost ? 'bg-amber-50/30' : ''}`}>
+                      <td className="px-8 py-6">
+                        <div className="flex items-center gap-4">
+                          <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-lg shadow-sm border ${shopUser.isGhost ? 'bg-amber-100 border-amber-200 text-amber-700' : 'bg-slate-50 border-slate-100 text-slate-600'}`}>
+                            {shopUser.isGhost ? '👻' : '🏪'}
+                          </div>
+                          <div>
+                            <p className="font-black text-slate-800 uppercase tracking-tight text-sm">{shopUser.shopName}</p>
+                            <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mt-0.5">ID: {shopUser.id.substring(0, 16).toUpperCase()}...</p>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-8 py-6">
+                        <p className="font-bold text-slate-600 text-sm">{shopUser.name}</p>
+                        <p className="text-[10px] text-slate-400 font-medium">{shopUser.email}</p>
+                      </td>
+                      <td className="px-8 py-6 text-center">
+                        <span className="px-3 py-1 rounded-full bg-blue-50 text-blue-600 text-[9px] font-black uppercase tracking-widest border border-blue-100">
+                          {shopUser.plan || 'PRO'}
+                        </span>
+                      </td>
+                      <td className="px-8 py-6 text-right">
+                        <p className="text-xs font-black text-slate-800">₹{formatCurrency(shopUser.revenue || 0)}</p>
+                        <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">{shopUser.invoiceCount || 0} Invoices</p>
+                      </td>
+                      <td className="px-8 py-6 text-center">
+                        <span className={`text-[8px] font-black uppercase px-2 py-0.5 rounded-md ${shopUser.status === 'suspended' ? 'bg-red-50 text-red-500 border border-red-100' : 'bg-green-50 text-green-500 border border-green-100'}`}>
+                          {shopUser.status || 'active'}
+                        </span>
+                      </td>
+                      <td className="px-8 py-6 text-right">
+                        <div className="flex items-center justify-end gap-2">
+                          <button onClick={() => openTenantDrillDown(shopUser.id)} className="px-3 py-2 bg-blue-50 text-blue-600 text-[10px] font-black rounded-lg hover:bg-blue-600 hover:text-white transition-all">DATA</button>
+                          <button onClick={() => openShopEditor(shopUser.id)} className="px-3 py-2 bg-slate-50 text-slate-600 text-[10px] font-black rounded-lg hover:bg-slate-800 hover:text-white transition-all" disabled={shopUser.isGhost}>EDIT</button>
+                          <button onClick={() => handleToggleStatus('SHOP', shopUser.id, shopUser.status || 'active')} className="px-3 py-2 bg-slate-800 text-white text-[10px] font-black rounded-lg hover:bg-red-600 transition-all active:scale-95" disabled={shopUser.isGhost}>{shopUser.status === 'suspended' ? 'RESTORE' : 'SUSPEND'}</button>
+                          <button onClick={() => handleTenantDelete(shopUser.id)} className="p-2 bg-red-50 text-red-600 text-lg font-black rounded-lg hover:bg-red-600 hover:text-white transition-all active:scale-95">🗑️</button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="p-8 bg-slate-50/30 border-t border-slate-50 text-center">
+              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">End of Master Tenant Registry</p>
+            </div>
+          </div>
         </div>
-        <div className="bg-white p-6 lg:p-8 rounded-3xl border border-slate-50 shadow-sm">
-          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Total Users</p>
-          <h3 className="text-2xl lg:text-3xl font-black text-slate-800">{globalStats.allUsers.length}</h3>
-        </div>
-        <div className="bg-blue-600 p-6 lg:p-8 rounded-3xl shadow-xl text-white">
-          <p className="text-[10px] font-black text-white/60 uppercase tracking-widest mb-1">GMV (EST)</p>
-          <h3 className="text-2xl lg:text-3xl font-black tracking-tighter truncate">₹{formatCurrency(globalStats.totalRevenue)}</h3>
-        </div>
-        <div className="bg-white p-6 lg:p-8 rounded-3xl border border-slate-50 shadow-sm">
-          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">System Load</p>
-          <h3 className="text-2xl lg:text-3xl font-black text-green-500">OPTIMAL</h3>
-        </div>
-      </div>
+      )}
 
-      <div className="bg-white rounded-3xl border border-slate-50 shadow-sm overflow-hidden">
-        <div className="p-6 lg:p-8 border-b border-slate-50 bg-slate-50/50 flex justify-between items-center">
-          <h3 className="font-black text-slate-800 text-sm">Tenant Directory</h3>
+      {activeTab === 'config' && (
+        <div className="animate-in fade-in slide-in-from-right-4 duration-500 max-w-2xl">
+          <div className="bg-white p-10 rounded-[2.5rem] border border-slate-100 shadow-sm">
+            <h4 className="text-sm font-black uppercase tracking-widest text-slate-800 mb-10 pb-4 border-b border-slate-50">Global Orchestrator Settings</h4>
+            <div className="space-y-8">
+              <div className="flex items-center justify-between p-6 bg-slate-50 rounded-3xl border border-slate-100 group hover:border-blue-500 transition-all">
+                <div>
+                  <span className="text-[11px] font-black uppercase tracking-widest text-slate-800 block">Maintenance Override</span>
+                  <span className="text-[10px] text-slate-400 font-bold">Locks all shop-level write operations globally.</span>
+                </div>
+                <button onClick={() => handleToggleSystem('maintenance_mode')} className={`w-14 h-7 rounded-full relative transition-all shadow-inner ${globalStats.systemSettings?.maintenance_mode ? 'bg-red-500' : 'bg-slate-300'}`}>
+                  <div className={`absolute top-1 w-5 h-5 bg-white rounded-full shadow-md transition-all ${globalStats.systemSettings?.maintenance_mode ? 'left-8' : 'left-1'}`}></div>
+                </button>
+              </div>
+              <div className="flex items-center justify-between p-6 bg-slate-50 rounded-3xl border border-slate-100 group hover:border-blue-500 transition-all">
+                <div>
+                  <span className="text-[11px] font-black uppercase tracking-widest text-slate-800 block">Public Signup Registry</span>
+                  <span className="text-[10px] text-slate-400 font-bold">Enables/Disables the /signup landing page route.</span>
+                </div>
+                <button onClick={() => handleToggleSystem('signups_enabled')} className={`w-14 h-7 rounded-full relative transition-all shadow-inner ${globalStats.systemSettings?.signups_enabled ? 'bg-blue-600' : 'bg-slate-300'}`}>
+                  <div className={`absolute top-1 w-5 h-5 bg-white rounded-full shadow-md transition-all ${globalStats.systemSettings?.signups_enabled ? 'left-8' : 'left-1'}`}></div>
+                </button>
+              </div>
+              <div className="pt-8">
+                <div className="p-6 bg-blue-50 rounded-3xl border border-blue-100">
+                  <p className="text-[10px] font-black text-blue-600 uppercase tracking-widest mb-2">Platform Admin Alert</p>
+                  <p className="text-[11px] font-bold text-blue-800 leading-relaxed">Changes to global config affect ALL tenants immediately. Use caution during peak hours.</p>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
-        <div className="overflow-x-auto no-scrollbar">
-          <table className="w-full text-left min-w-[800px]">
-            <thead>
-              <tr className="text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-50 bg-slate-50/20">
-                <th className="px-6 lg:px-10 py-5 lg:py-6">Entity</th>
-                <th className="px-6 lg:px-10 py-5 lg:py-6">Operator</th>
-                <th className="px-6 lg:px-10 py-5 lg:py-6">Plan</th>
-                <th className="px-6 lg:px-10 py-5 lg:py-6">Status</th>
-                <th className="px-6 lg:px-10 py-5 lg:py-6 text-right">Master Control</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-50 font-bold">
-              {globalStats.allUsers.filter(u => u.role === 'ADMIN').map((shopUser) => (
-                <tr key={shopUser.id} className="hover:bg-slate-50/50 transition-colors group text-sm">
-                  <td className="px-6 lg:px-10 py-4 lg:py-6">
-                    <p className="font-black text-slate-800 uppercase tracking-tight truncate max-w-[150px]">{shopUser.shopName}</p>
-                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">ID: {shopUser.id.toUpperCase()}</p>
-                  </td>
-                  <td className="px-6 lg:px-10 py-4 lg:py-6">
-                    <p className="font-bold text-slate-600 truncate max-w-[120px]">{shopUser.name}</p>
-                    <p className="text-[10px] text-slate-400 truncate max-w-[150px] font-medium">{shopUser.email}</p>
-                  </td>
-                  <td className="px-6 lg:px-10 py-4 lg:py-6">
-                    <span className="px-3 py-1 rounded-full bg-blue-50 text-blue-600 text-[9px] font-black uppercase tracking-widest">
-                      {shopUser.plan || 'PRO'}
-                    </span>
-                  </td>
-                  <td className="px-6 lg:px-10 py-4 lg:py-6">
-                    <span className={`text-[8px] font-black uppercase px-2 py-0.5 rounded ${shopUser.status === 'suspended' ? 'bg-red-50 text-red-500' : 'bg-green-50 text-green-500'}`}>
-                      {shopUser.status || 'active'}
-                    </span>
-                  </td>
-                  <td className="px-6 lg:px-10 py-4 lg:py-6 text-right">
-                    <div className="flex items-center justify-end gap-2">
-                      <button onClick={() => openTenantDrillDown(shopUser.id)} className="px-3 py-1.5 bg-blue-50 text-blue-600 text-[10px] font-black rounded-lg hover:bg-blue-100 transition-colors">DATA</button>
-                      <button onClick={() => openShopEditor(shopUser.id)} className="px-3 py-1.5 bg-slate-100 text-slate-600 text-[10px] font-black rounded-lg hover:bg-slate-200 transition-colors">EDIT</button>
-                      <button onClick={() => handleToggleStatus('SHOP', shopUser.id, shopUser.status || 'active')} className="px-3 py-1.5 bg-slate-800 text-white text-[10px] font-black rounded-lg hover:bg-black transition-colors">{shopUser.status === 'suspended' ? 'RESTORE' : 'SUSPEND'}</button>
-                      <button onClick={() => handleTenantDelete(shopUser.id)} className="px-3 py-1.5 bg-red-100 text-red-600 text-[10px] font-black rounded-lg hover:bg-red-200 transition-colors">DELETE</button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
+      )}
+
+      {/* Tenant Data Drill-Down Modal */}
 
       {/* Tenant Data Drill-Down Modal */}
       {viewingTenantData && (

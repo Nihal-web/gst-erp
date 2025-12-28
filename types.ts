@@ -42,7 +42,10 @@ export interface PackagingUnit {
 export interface Product {
   id: string;
   warehouseId?: string;
-  name: string;
+  name: string; // This will act as the "Technical Name/Description"
+  productName?: string; // New field for simple "Goods Name"
+  description?: string; // Additional details
+  type: 'GOODS' | 'SERVICES'; // Added for proper HSN/SAC handling
   hsn: string;
   sac?: string;
   rate: number;

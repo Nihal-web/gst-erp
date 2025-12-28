@@ -49,17 +49,28 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const fetchProfile = async (userId: string, email: string) => {
     try {
+      // Get session metadata first
+      const { data: { user: authUser } } = await supabase.auth.getUser();
+      const meta = authUser?.user_metadata || {};
+
       const { data, error } = await supabase
         .from('users')
         .select('*')
-        .eq('id', userId) // Check by Auth ID first
+        .eq('id', userId)
         .single();
 
       if (data) {
-        setUser({ ...data, email });
+        // Update user record if metadata has more info (sync)
+        if (meta.name && (data.name === 'User' || !data.name)) {
+          await supabase.from('users').update({
+            name: meta.name,
+            shop_name: meta.shop_name || data.shop_name
+          }).eq('id', userId);
+        }
+        setUser({ ...data, email, name: meta.name || data.name, shopName: meta.shop_name || data.shop_name });
         setOriginalRole(data.role as UserRole);
       } else {
-        // ID mismatch? Check if legacy user exists by email
+        // Check for legacy user
         const { data: legacyUser } = await supabase
           .from('users')
           .select('*')
@@ -67,34 +78,33 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           .single();
 
         if (legacyUser) {
-          console.log("Found legacy user, migrating to new Auth ID...", legacyUser);
-          // Migrate legacy record to new Auth ID
-          const { data: migrated, error: migrateError } = await supabase
+          const { data: migrated } = await supabase
             .from('users')
-            .update({ id: userId }) // Update DB ID to match Auth ID
+            .update({ id: userId, name: meta.name || legacyUser.name })
             .eq('email', email)
             .select()
             .single();
 
           if (migrated) {
-            setUser({ ...migrated, email });
+            setUser({ ...migrated, email, name: meta.name || migrated.name, shopName: meta.shop_name || migrated.shop_name });
             setOriginalRole(migrated.role as UserRole);
             return;
-          } else {
-            console.error("Migration failed", migrateError);
           }
         }
 
-        // If no legacy user, or migration failed, create new
-        // Fallback/Init
+        // New profile
         const newUser = {
-          id: userId, email, name: 'User', role: UserRole.ADMIN, shopName: 'My Shop', status: 'active', plan: 'free'
+          id: userId,
+          email,
+          name: meta.name || 'User',
+          role: meta.role || UserRole.ADMIN,
+          shop_name: meta.shop_name || 'My Shop',
+          status: 'active',
+          plan: 'pro'
         };
 
-        // Try inserting to persist
         await supabase.from('users').insert([newUser]);
-
-        setUser(newUser as User);
+        setUser({ ...newUser, shopName: newUser.shop_name } as unknown as User);
         setOriginalRole(newUser.role as UserRole);
       }
     } catch (e) {
@@ -113,12 +123,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const { data, error } = await supabase.auth.signUp({
       email, password,
       options: {
-        data: { name, shop_name: shopName, role } // Store metadata for trigger
+        data: { name, shop_name: shopName, role }
       }
     });
     if (error) throw new Error(error.message);
 
-    // Manually insert into public.users if trigger isn't set up
     if (data.user) {
       const newUser = {
         id: data.user.id,
@@ -130,10 +139,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         plan: 'pro'
       };
 
-      const { error: dbError } = await supabase.from('users').insert([newUser]);
-      if (dbError) console.error("Failed to create public user record", dbError);
-
-      setUser(newUser as unknown as User);
+      await supabase.from('users').upsert([newUser], { onConflict: 'id' });
+      setUser({ ...newUser, shopName: newUser.shop_name } as unknown as User);
       setOriginalRole(newUser.role as UserRole);
     }
   };

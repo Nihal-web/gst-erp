@@ -1,0 +1,363 @@
+
+import { GoogleGenAI } from "@google/genai";
+
+export interface HSNSuggestion {
+  hsnCode: string;
+  gstRate: string;
+  description: string;
+  confidence: number;
+  type: 'GOODS' | 'SERVICES';
+}
+
+// Comprehensive HSN/SAC Database - Works without API
+const HSN_DATABASE: Record<string, HSNSuggestion[]> = {
+  // FOOD & AGRICULTURE (Chapter 01-24)
+  'milk': [
+    { hsnCode: '0401', gstRate: '0%', description: 'Fresh Milk (Unprocessed)', confidence: 95, type: 'GOODS' },
+    { hsnCode: '0402', gstRate: '5%', description: 'Milk Powder / Condensed Milk', confidence: 92, type: 'GOODS' },
+    { hsnCode: '0404', gstRate: '12%', description: 'Flavoured Milk / Buttermilk', confidence: 90, type: 'GOODS' }
+  ],
+  'atta': [
+    { hsnCode: '1101', gstRate: '0%', description: 'Loose/Unbranded Atta', confidence: 98, type: 'GOODS' },
+    { hsnCode: '1101', gstRate: '5%', description: 'Pre-packaged & Labeled Atta (branded)', confidence: 95, type: 'GOODS' }
+  ],
+  'flour': [
+    { hsnCode: '1101', gstRate: '0%', description: 'Wheat Flour (Atta)', confidence: 96, type: 'GOODS' },
+    { hsnCode: '1102', gstRate: '5%', description: 'Maida (Refined Wheat Flour)', confidence: 94, type: 'GOODS' }
+  ],
+  'rice': [
+    { hsnCode: '1006', gstRate: '0%', description: 'Unbranded Rice (loose)', confidence: 96, type: 'GOODS' },
+    { hsnCode: '1006', gstRate: '5%', description: 'Branded/Packaged Rice', confidence: 94, type: 'GOODS' }
+  ],
+  'sugar': [
+    { hsnCode: '1701', gstRate: '5%', description: 'White Sugar', confidence: 97, type: 'GOODS' },
+    { hsnCode: '1701', gstRate: '18%', description: 'Cube Sugar', confidence: 91, type: 'GOODS' }
+  ],
+  'oil': [
+    { hsnCode: '1507', gstRate: '5%', description: 'Soybean Oil', confidence: 95, type: 'GOODS' },
+    { hsnCode: '1508', gstRate: '5%', description: 'Groundnut Oil', confidence: 94, type: 'GOODS' },
+    { hsnCode: '1509', gstRate: '5%', description: 'Olive Oil', confidence: 93, type: 'GOODS' },
+    { hsnCode: '1512', gstRate: '5%', description: 'Sunflower Oil', confidence: 95, type: 'GOODS' }
+  ],
+  'bread': [
+    { hsnCode: '1905', gstRate: '0%', description: 'Bread (unbranded)', confidence: 96, type: 'GOODS' },
+    { hsnCode: '1905', gstRate: '5%', description: 'Bread (branded)', confidence: 94, type: 'GOODS' }
+  ],
+  'biscuit': [
+    { hsnCode: '1905', gstRate: '18%', description: 'Biscuits (all types)', confidence: 96, type: 'GOODS' }
+  ],
+  'tea': [
+    { hsnCode: '0902', gstRate: '5%', description: 'Tea (loose/packaged)', confidence: 97, type: 'GOODS' }
+  ],
+  'coffee': [
+    { hsnCode: '0901', gstRate: '5%', description: 'Coffee Beans/Powder', confidence: 96, type: 'GOODS' }
+  ],
+  'salt': [
+    { hsnCode: '2501', gstRate: '0%', description: 'Common Salt', confidence: 98, type: 'GOODS' }
+  ],
+  'spices': [
+    { hsnCode: '0904', gstRate: '5%', description: 'Pepper', confidence: 94, type: 'GOODS' },
+    { hsnCode: '0907', gstRate: '5%', description: 'Cloves', confidence: 93, type: 'GOODS' },
+    { hsnCode: '0908', gstRate: '5%', description: 'Cardamom', confidence: 93, type: 'GOODS' },
+    { hsnCode: '0909', gstRate: '5%', description: 'Cumin/Coriander Seeds', confidence: 94, type: 'GOODS' },
+    { hsnCode: '0910', gstRate: '5%', description: 'Turmeric', confidence: 95, type: 'GOODS' }
+  ],
+
+  // CONSTRUCTION MATERIALS (Chapter 25-27, 68-70, 72-73)
+  'cement': [
+    { hsnCode: '2523', gstRate: '28%', description: 'Portland Cement', confidence: 98, type: 'GOODS' },
+    { hsnCode: '2523', gstRate: '28%', description: 'White Cement', confidence: 95, type: 'GOODS' }
+  ],
+  'steel': [
+    { hsnCode: '7214', gstRate: '18%', description: 'Iron Bars / Steel Rods (TMT)', confidence: 96, type: 'GOODS' },
+    { hsnCode: '7308', gstRate: '18%', description: 'Steel Structures', confidence: 92, type: 'GOODS' },
+    { hsnCode: '7326', gstRate: '18%', description: 'Steel Articles', confidence: 90, type: 'GOODS' }
+  ],
+  'iron': [
+    { hsnCode: '7214', gstRate: '18%', description: 'Iron Bars/Rods', confidence: 95, type: 'GOODS' },
+    { hsnCode: '7215', gstRate: '18%', description: 'Iron Wire', confidence: 92, type: 'GOODS' }
+  ],
+  'brick': [
+    { hsnCode: '6901', gstRate: '12%', description: 'Building Bricks', confidence: 96, type: 'GOODS' }
+  ],
+  'tiles': [
+    { hsnCode: '6907', gstRate: '28%', description: 'Ceramic Tiles', confidence: 95, type: 'GOODS' },
+    { hsnCode: '6908', gstRate: '28%', description: 'Glazed Tiles', confidence: 94, type: 'GOODS' }
+  ],
+  'paint': [
+    { hsnCode: '3208', gstRate: '28%', description: 'Paints (Oil-based)', confidence: 95, type: 'GOODS' },
+    { hsnCode: '3209', gstRate: '28%', description: 'Paints (Water-based)', confidence: 94, type: 'GOODS' }
+  ],
+  'glass': [
+    { hsnCode: '7005', gstRate: '18%', description: 'Float Glass', confidence: 94, type: 'GOODS' },
+    { hsnCode: '7007', gstRate: '18%', description: 'Safety Glass', confidence: 92, type: 'GOODS' }
+  ],
+  'marble': [
+    { hsnCode: '2515', gstRate: '12%', description: 'Marble Slabs', confidence: 95, type: 'GOODS' }
+  ],
+  'granite': [
+    { hsnCode: '2516', gstRate: '12%', description: 'Granite Slabs', confidence: 95, type: 'GOODS' }
+  ],
+  'sand': [
+    { hsnCode: '2505', gstRate: '5%', description: 'Natural Sand', confidence: 96, type: 'GOODS' }
+  ],
+
+  // ELECTRONICS & ELECTRICAL (Chapter 84-85)
+  'mobile': [
+    { hsnCode: '8517', gstRate: '18%', description: 'Mobile Phones', confidence: 98, type: 'GOODS' },
+    { hsnCode: '8517', gstRate: '18%', description: 'Mobile Accessories', confidence: 91, type: 'GOODS' }
+  ],
+  'laptop': [
+    { hsnCode: '8471', gstRate: '18%', description: 'Laptop / Notebook Computer', confidence: 97, type: 'GOODS' }
+  ],
+  'computer': [
+    { hsnCode: '8471', gstRate: '18%', description: 'Desktop Computer', confidence: 96, type: 'GOODS' },
+    { hsnCode: '8473', gstRate: '18%', description: 'Computer Parts', confidence: 92, type: 'GOODS' }
+  ],
+  'tv': [
+    { hsnCode: '8528', gstRate: '18%', description: 'Television (LED/LCD)', confidence: 97, type: 'GOODS' }
+  ],
+  'fan': [
+    { hsnCode: '8414', gstRate: '12%', description: 'Ceiling/Table Fan', confidence: 96, type: 'GOODS' }
+  ],
+  'ac': [
+    { hsnCode: '8415', gstRate: '28%', description: 'Air Conditioner', confidence: 97, type: 'GOODS' }
+  ],
+  'refrigerator': [
+    { hsnCode: '8418', gstRate: '18%', description: 'Refrigerator', confidence: 97, type: 'GOODS' }
+  ],
+  'washing machine': [
+    { hsnCode: '8450', gstRate: '28%', description: 'Washing Machine', confidence: 97, type: 'GOODS' }
+  ],
+  'wire': [
+    { hsnCode: '8544', gstRate: '18%', description: 'Electrical Wire/Cable', confidence: 95, type: 'GOODS' }
+  ],
+  'bulb': [
+    { hsnCode: '8539', gstRate: '18%', description: 'LED Bulb', confidence: 96, type: 'GOODS' },
+    { hsnCode: '8539', gstRate: '18%', description: 'CFL Bulb', confidence: 94, type: 'GOODS' }
+  ],
+  'switch': [
+    { hsnCode: '8536', gstRate: '18%', description: 'Electrical Switch', confidence: 95, type: 'GOODS' }
+  ],
+
+  // TEXTILES & GARMENTS (Chapter 50-63)
+  'cloth': [
+    { hsnCode: '5208', gstRate: '5%', description: 'Cotton Fabric', confidence: 94, type: 'GOODS' },
+    { hsnCode: '5407', gstRate: '5%', description: 'Synthetic Fabric', confidence: 92, type: 'GOODS' }
+  ],
+  'shirt': [
+    { hsnCode: '6205', gstRate: '5%', description: 'Men\'s Shirt', confidence: 95, type: 'GOODS' }
+  ],
+  'saree': [
+    { hsnCode: '6217', gstRate: '5%', description: 'Saree', confidence: 96, type: 'GOODS' }
+  ],
+  'jeans': [
+    { hsnCode: '6203', gstRate: '5%', description: 'Jeans/Trousers', confidence: 95, type: 'GOODS' }
+  ],
+
+  // PLASTICS & RUBBER (Chapter 39-40)
+  'plastic': [
+    { hsnCode: '3923', gstRate: '18%', description: 'Plastic Containers', confidence: 93, type: 'GOODS' },
+    { hsnCode: '3926', gstRate: '18%', description: 'Plastic Articles', confidence: 91, type: 'GOODS' }
+  ],
+  'pipe': [
+    { hsnCode: '3917', gstRate: '18%', description: 'Plastic Pipes (PVC)', confidence: 95, type: 'GOODS' }
+  ],
+  'tyre': [
+    { hsnCode: '4011', gstRate: '28%', description: 'New Tyres', confidence: 97, type: 'GOODS' }
+  ],
+
+  // FURNITURE (Chapter 94)
+  'furniture': [
+    { hsnCode: '9403', gstRate: '18%', description: 'Wooden Furniture', confidence: 94, type: 'GOODS' },
+    { hsnCode: '9401', gstRate: '18%', description: 'Chairs/Seats', confidence: 93, type: 'GOODS' }
+  ],
+  'chair': [
+    { hsnCode: '9401', gstRate: '18%', description: 'Chair/Seat', confidence: 96, type: 'GOODS' }
+  ],
+  'table': [
+    { hsnCode: '9403', gstRate: '18%', description: 'Table', confidence: 96, type: 'GOODS' }
+  ],
+
+  // VEHICLES (Chapter 87)
+  'car': [
+    { hsnCode: '8703', gstRate: '28%', description: 'Motor Car', confidence: 97, type: 'GOODS' }
+  ],
+  'bike': [
+    { hsnCode: '8711', gstRate: '28%', description: 'Motorcycle', confidence: 96, type: 'GOODS' }
+  ],
+  'bicycle': [
+    { hsnCode: '8712', gstRate: '12%', description: 'Bicycle', confidence: 97, type: 'GOODS' }
+  ],
+
+  // STATIONERY & PAPER (Chapter 48-49)
+  'paper': [
+    { hsnCode: '4802', gstRate: '12%', description: 'Printing Paper', confidence: 95, type: 'GOODS' },
+    { hsnCode: '4810', gstRate: '12%', description: 'Coated Paper', confidence: 92, type: 'GOODS' }
+  ],
+  'notebook': [
+    { hsnCode: '4820', gstRate: '12%', description: 'Exercise Books/Notebooks', confidence: 96, type: 'GOODS' }
+  ],
+  'pen': [
+    { hsnCode: '9608', gstRate: '18%', description: 'Ball Point Pen', confidence: 96, type: 'GOODS' }
+  ],
+
+  // SERVICES (Chapter 99)
+  'transport': [
+    { hsnCode: '996511', gstRate: '5%', description: 'Goods Transport by Road', confidence: 94, type: 'SERVICES' }
+  ],
+  'repair': [
+    { hsnCode: '998713', gstRate: '18%', description: 'Repair Services', confidence: 92, type: 'SERVICES' }
+  ],
+  'construction': [
+    { hsnCode: '995431', gstRate: '18%', description: 'Construction Services', confidence: 93, type: 'SERVICES' }
+  ],
+  'software': [
+    { hsnCode: '998314', gstRate: '18%', description: 'IT Software Services', confidence: 95, type: 'SERVICES' }
+  ],
+  'consulting': [
+    { hsnCode: '998313', gstRate: '18%', description: 'Consulting Services', confidence: 93, type: 'SERVICES' }
+  ]
+};
+
+// Expanded synonym mapping with regional language support
+const SYNONYMS: Record<string, string[]> = {
+  'mobile': ['phone', 'smartphone', 'cellphone', 'handset', 'mobile phone'],
+  'laptop': ['notebook', 'computer', 'pc'],
+  'atta': ['aata', 'wheat flour', 'gehun', 'gehun ka atta', 'whole wheat'],
+  'flour': ['atta', 'maida', 'besan', 'rawa', 'sooji'],
+  'rice': ['chawal', 'basmati', 'sela', 'brown rice'],
+  'oil': ['tel', 'cooking oil', 'edible oil', 'khane ka tel'],
+  'cement': ['siment', 'sement'],
+  'steel': ['sariya', 'loha', 'iron', 'tmt', 'rod'],
+  'tv': ['television', 'led', 'lcd', 'smart tv'],
+  'ac': ['air conditioner', 'cooler', 'split ac', 'window ac'],
+  'bike': ['motorcycle', 'motorbike', 'two wheeler'],
+  'car': ['vehicle', 'automobile', 'four wheeler'],
+  'shirt': ['t-shirt', 'tshirt', 'kamiz'],
+  'paint': ['rang', 'color', 'emulsion', 'distemper'],
+  'wire': ['cable', 'tar', 'electric wire'],
+  'bulb': ['light', 'led', 'cfl', 'tube light'],
+  'furniture': ['mebel', 'sofa', 'bed', 'almirah'],
+  'repair': ['service', 'maintenance', 'fixing'],
+  'milk': ['doodh', 'dairy'],
+  'sugar': ['cheeni', 'shakkar'],
+  'salt': ['namak'],
+  'tea': ['chai'],
+  'coffee': ['kafi'],
+  'spices': ['masala', 'mirch', 'haldi'],
+  'brick': ['eent', 'building brick'],
+  'tiles': ['tile', 'floor tile', 'wall tile'],
+  'glass': ['kach', 'sheeshe'],
+  'marble': ['sangmarmar'],
+  'granite': ['pathhar'],
+  'sand': ['ret', 'balu'],
+  'refrigerator': ['fridge', 'frig'],
+  'washing machine': ['washer', 'washing'],
+  'fan': ['pankha'],
+  'switch': ['board', 'plug'],
+  'cloth': ['kapda', 'fabric'],
+  'plastic': ['polythene'],
+  'pipe': ['pvc pipe', 'water pipe'],
+  'tyre': ['tire', 'tube'],
+  'chair': ['kursi', 'seat'],
+  'table': ['mez'],
+  'bicycle': ['cycle', 'saikal'],
+  'paper': ['kagaz'],
+  'notebook': ['copy', 'register'],
+  'pen': ['kalam'],
+  'bread': ['double roti', 'pav'],
+  'biscuit': ['cookies']
+};
+
+// Category mapping for broader searches
+const CATEGORIES: Record<string, string[]> = {
+  'food': ['milk', 'atta', 'rice', 'sugar', 'oil', 'tea', 'coffee', 'salt', 'spices', 'bread', 'biscuit'],
+  'construction': ['cement', 'steel', 'iron', 'brick', 'tiles', 'paint', 'glass', 'marble', 'granite', 'sand', 'pipe'],
+  'electronics': ['mobile', 'laptop', 'computer', 'tv', 'ac', 'refrigerator', 'washing machine', 'fan', 'bulb', 'wire', 'switch'],
+  'textile': ['cloth', 'shirt', 'saree', 'jeans'],
+  'furniture': ['chair', 'table', 'furniture'],
+  'vehicle': ['car', 'bike', 'bicycle', 'tyre'],
+  'stationery': ['paper', 'notebook', 'pen']
+};
+
+// Calculate similarity score
+function similarityScore(str1: string, str2: string): number {
+  const longer = str1.length > str2.length ? str1 : str2;
+  const shorter = str1.length > str2.length ? str2 : str1;
+
+  if (longer.length === 0) return 1.0;
+  if (longer.includes(shorter)) return 0.8;
+
+  let commonPrefix = 0;
+  for (let i = 0; i < shorter.length; i++) {
+    if (str1[i] === str2[i]) commonPrefix++;
+    else break;
+  }
+
+  return commonPrefix / longer.length;
+}
+
+export const fetchHSNDetails = async (query: string, productType: 'GOODS' | 'SERVICES'): Promise<HSNSuggestion[]> => {
+  const normalizedQuery = query.toLowerCase().trim();
+  const cleanQuery = normalizedQuery.replace(/\b(the|a|an|for|of|in|on|at)\b/g, '').trim();
+
+  let bestMatch: { key: string; suggestions: HSNSuggestion[]; score: number } | null = null;
+
+  for (const [key, suggestions] of Object.entries(HSN_DATABASE)) {
+    let matchScore = 0;
+
+    // Exact match
+    if (cleanQuery === key || key === cleanQuery) {
+      matchScore = 1.0;
+    }
+    // Contains match
+    else if (cleanQuery.includes(key) || key.includes(cleanQuery)) {
+      matchScore = 0.9;
+    }
+    // Check synonyms
+    else if (SYNONYMS[key]) {
+      for (const synonym of SYNONYMS[key]) {
+        if (cleanQuery.includes(synonym) || synonym.includes(cleanQuery)) {
+          matchScore = 0.85;
+          break;
+        }
+      }
+    }
+    // Fuzzy match
+    else {
+      const similarity = similarityScore(cleanQuery, key);
+      if (similarity > 0.6) matchScore = similarity * 0.7;
+    }
+
+    // Handle plurals
+    if (matchScore === 0) {
+      const singularQuery = cleanQuery.endsWith('s') ? cleanQuery.slice(0, -1) : cleanQuery;
+      const singularKey = key.endsWith('s') ? key.slice(0, -1) : key;
+
+      if (singularQuery === singularKey || singularQuery.includes(singularKey) || singularKey.includes(singularQuery)) {
+        matchScore = 0.85;
+      }
+    }
+
+    if (matchScore > 0 && (!bestMatch || matchScore > bestMatch.score)) {
+      bestMatch = { key, suggestions, score: matchScore };
+    }
+  }
+
+  if (bestMatch && bestMatch.score > 0.5) {
+    console.log(`✅ Found ${bestMatch.suggestions.length} matches for "${query}" (matched: "${bestMatch.key}", confidence: ${Math.round(bestMatch.score * 100)}%)`);
+    return bestMatch.suggestions;
+  }
+
+  console.log(`ℹ️ No match for "${query}", returning generic suggestions`);
+  return [
+    {
+      hsnCode: productType === 'GOODS' ? '9999' : '998399',
+      gstRate: '18%',
+      description: `${query} - Please verify HSN code manually`,
+      confidence: 50,
+      type: productType
+    }
+  ];
+};

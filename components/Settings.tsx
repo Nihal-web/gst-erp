@@ -5,7 +5,7 @@ import { FirmSettings } from '../types';
 import { useAuth } from '../AuthContext';
 
 const Settings: React.FC = () => {
-  const { firm, setFirm, showAlert, invoices, updateUserProfile } = useApp();
+  const { firm, setFirm, showAlert, invoices, updateUserProfile, isLoaded } = useApp();
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState<'firm' | 'profile'>('firm');
 
@@ -16,8 +16,19 @@ const Settings: React.FC = () => {
   const [profileData, setProfileData] = useState({ name: '', shopName: '' });
 
   useEffect(() => {
-    setFormData(firm);
-  }, [firm]);
+    if (isLoaded) {
+      setFormData(firm);
+    }
+  }, [firm, isLoaded]);
+
+  if (!isLoaded) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4">
+        <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+        <p className="text-slate-400 font-black text-xs uppercase tracking-widest">Syncing Shop Config...</p>
+      </div>
+    );
+  }
 
   useEffect(() => {
     if (user) {

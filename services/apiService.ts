@@ -3,14 +3,21 @@ import { supabase } from '../supabaseClient';
 
 // --- SETTINGS ---
 export const fetchSettings = async (): Promise<FirmSettings | null> => {
-    const { data, error } = await supabase.from('firm_settings').select('*').single();
-    if (error) return null;
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return null;
+
+    const { data, error } = await supabase
+        .from('firm_settings')
+        .select('*')
+        .eq('tenant_id', user.id)
+        .maybeSingle();
+
+    if (error || !data) return null;
 
     // Map DB columns to Frontend Types (snake_case to camelCase)
-    // Assuming DB has snake_case, but frontend is camelCase. 
-    // We might need a mapper helper.
     return {
         ...data,
+        name: data.firm_name,
         bankName: data.bank_name,
         bankBranch: data.bank_branch,
         accNumber: data.acc_number,
@@ -26,7 +33,7 @@ export const saveSettings = async (settings: FirmSettings) => {
 
     const payload = {
         tenant_id: user.id,
-        firm_name: settings.name, // Mapped to DB column firm_name
+        firm_name: settings.name,
         tagline: settings.tagline,
         address: settings.address,
         pan: settings.pan,
@@ -45,41 +52,35 @@ export const saveSettings = async (settings: FirmSettings) => {
         declaration: settings.declaration
     };
 
-    // Robust approach: Check existence first to avoid Unique Constraint dependency issues
-    const { data: existing } = await supabase
+    // Use upsert with onConflict on tenant_id for guaranteed single-record persistence
+    const { data, error } = await supabase
         .from('firm_settings')
-        .select('id')
-        .eq('tenant_id', user.id)
+        .upsert(payload, { onConflict: 'tenant_id' })
+        .select()
         .single();
 
-    let result;
-    if (existing) {
-        // Update
-        result = await supabase
-            .from('firm_settings')
-            .update(payload)
-            .eq('id', existing.id)
-            .select()
-            .single();
-    } else {
-        // Insert
-        result = await supabase
-            .from('firm_settings')
-            .insert([payload])
-            .select()
-            .single();
+    if (error) {
+        console.error("Save Settings Error:", error);
+        throw error;
     }
 
-    if (result.error) {
-        console.error("Save Settings Error:", result.error);
-        throw result.error;
-    }
-    return result.data;
+    return {
+        ...settings,
+        // Any server side fields like 'id' or 'created_at' would be in 'data'
+    };
 };
 
 // --- CUSTOMERS ---
 export const fetchCustomers = async (): Promise<Customer[]> => {
-    const { data, error } = await supabase.from('customers').select('*').order('created_at', { ascending: false });
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return [];
+
+    const { data, error } = await supabase
+        .from('customers')
+        .select('*')
+        .eq('tenant_id', user.id)
+        .order('created_at', { ascending: false });
+
     if (error) throw error;
     return data.map((row: any) => ({
         ...row,
@@ -108,16 +109,82 @@ export const createCustomer = async (customer: Customer): Promise<Customer> => {
     return { ...data, stateCode: data.state_code } as Customer;
 };
 
+export const updateCustomerApi = async (customer: Customer): Promise<Customer> => {
+    const payload = {
+        name: customer.name,
+        address: customer.address,
+        phone: customer.phone,
+        gstin: customer.gstin,
+        state: customer.state,
+        state_code: customer.stateCode,
+        country: customer.country || 'India'
+    };
+
+    const { data, error } = await supabase
+        .from('customers')
+        .update(payload)
+        .eq('id', customer.id)
+        .select()
+        .single();
+
+    if (error) throw error;
+    return { ...data, stateCode: data.state_code } as Customer;
+};
+
+export const deleteCustomerApi = async (id: string) => {
+    const { error } = await supabase.from('customers').delete().eq('id', id);
+    if (error) throw error;
+};
+
+export const fetchCustomerInvoices = async (customerId: string): Promise<Invoice[]> => {
+    const { data, error } = await supabase
+        .from('invoices')
+        .select(`
+            *,
+            customer:customers!invoices_customer_id_fkey ( name, gstin, address, state, state_code )
+        `)
+        .eq('customer_id', customerId)
+        .order('created_at', { ascending: false });
+
+    if (error) throw error;
+
+    return data.map((row: any) => {
+        const custData = Array.isArray(row.customer) ? row.customer[0] : row.customer;
+        return {
+            id: row.id,
+            invoiceNo: row.invoice_number,
+            type: (row.status === 'generated' ? 'GOODS' : row.status) as any,
+            date: row.created_at,
+            totalTaxable: (row.total_amount || 0) - (row.tax_amount || 0),
+            totalAmount: row.total_amount,
+            customer: {
+                name: custData?.name || 'Unknown',
+                gstin: custData?.gstin,
+                address: custData?.address,
+                state: custData?.state,
+                stateCode: custData?.state_code
+            },
+            items: []
+        } as unknown as Invoice;
+    });
+};
+
 // --- INVENTORY ---
 export const fetchProducts = async (): Promise<Product[]> => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return [];
+
     const { data, error } = await supabase
         .from('inventory')
         .select('*, packaging_units(*)')
+        .eq('tenant_id', user.id)
         .order('created_at', { ascending: false });
 
     if (error) throw error;
     return data.map((row: any) => ({
         ...row,
+        productName: row.product_name,
+        description: row.description,
         gstPercent: row.gst_percent,
         warehouseId: row.warehouse_id,
         alertThreshold: row.alert_threshold,
@@ -138,6 +205,8 @@ export const createProduct = async (product: Product): Promise<Product> => {
     const payload = {
         tenant_id: user.id,
         name: product.name,
+        product_name: product.productName,
+        description: product.description,
         hsn: product.hsn,
         sac: product.sac || null,
         rate: product.rate,
@@ -168,72 +237,58 @@ export const createProduct = async (product: Product): Promise<Product> => {
 
 // --- INVOICES ---
 export const fetchInvoices = async (): Promise<Invoice[]> => {
-    // We need to join customers. Supabase-js can do this if foreign keys are set.
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return [];
+
+    // Using explicit foreign key relationship to resolve ambiguity
+    // 'invoices_customer_id_fkey' is the likely standard FK name for customer_id
     const { data, error } = await supabase
         .from('invoices')
         .select(`
             *,
-            customer:customers ( name, gstin, address, state, state_code )
+            customer:customers!invoices_customer_id_fkey ( name, gstin, address, state, state_code )
         `)
+        .eq('tenant_id', user.id)
         .order('created_at', { ascending: false });
 
-    if (error) return [];
+    if (error) {
+        console.error("Supabase fetchInvoices Error:", error.message, error.details, error.hint);
+        throw error; // Throw so AppContext knows sync failed
+    }
 
-    return data.map((row: any) => ({
-        id: row.id,
-        invoiceNo: row.invoice_number, // note DB column is invoice_number
-        type: row.status, // Assuming 'status' is mapped to type or we added 'type' col? Schema says 'status'. Server code had row.type. 
-        // Schema had 'status' DEFAULT 'draft'. Server code insert said 'type' DEFAULT 'GOODS'. 
-        // Wait, checking schema:
-        /* 
-           CREATE TABLE IF NOT EXISTS invoices (
-             ...
-             status VARCHAR(20) DEFAULT 'draft',
-             ...
-           ); 
-           Server code insert: invoice_no, type... 
-           Wait, server code api.js Line 249: INSERT INTO invoices (invoice_no, type, ...)
-           Schema file lines 44-50: invoice_number, status... 
-           There is a mismatch between server/api.js INSERT and server/supabase_schema.sql.
-           The schema SQL I read might be old or the user updated it.
-           I will Assume the server/api.js logic was correct for columns.
-           But I am writing client side code now. I must rely on the ACTUAL DB schema.
-           If users ran supabase_schema.sql, it lacks 'type', 'total_taxable' etc?
-           Let's check schema details again.
-           Schema: total_amount, tax_amount.
-           Server: total_taxable, igst, cgst, sgst...
-           
-           Risk: The schema file in repo might NOT match the actual running server DB that was being used.
-           But since we are switching to Supabase, we are likely using the schema defined in SQL or we need to ensure it matches.
-           
-           I will use the column names that match the `Invoice` type interface as best as possible, mapping to snake_case.
-           I'll assume standard columns exist or I might fail.
-         */
-        date: row.created_at, // or row.date if it exists
-        totalTaxable: row.total_amount - row.tax_amount, // Approximation if columns missing
-        igst: 0, cgst: 0, sgst: 0, // Placeholder if missing
-        totalAmount: row.total_amount,
-        isPaid: false,
-        customer: {
-            name: row.customer?.name,
-            gstin: row.customer?.gstin,
-            address: row.customer?.address,
-            state: row.customer?.state,
-            stateCode: row.customer?.state_code
-        },
-        items: [] // Fetching items separately or joining
-    } as unknown as Invoice));
+    console.log(`Fetched ${data.length} invoices for user ${user.id}`);
+
+    return data.map((row: any) => {
+        // relationship is aliased as 'customer', might be object or array
+        const custData = Array.isArray(row.customer) ? row.customer[0] : row.customer;
+
+        return {
+            id: row.id,
+            invoiceNo: row.invoice_number,
+            type: (row.status === 'generated' ? 'GOODS' : row.status) as any,
+            date: row.created_at,
+            totalTaxable: (row.total_amount || 0) - (row.tax_amount || 0),
+            igst: 0, cgst: 0, sgst: 0,
+            totalAmount: row.total_amount,
+            isPaid: false,
+            customer: {
+                name: custData?.name || 'Unknown',
+                gstin: custData?.gstin,
+                address: custData?.address,
+                state: custData?.state,
+                stateCode: custData?.state_code
+            },
+            items: []
+        } as unknown as Invoice;
+    });
 };
 
 export const createInvoice = async (invoice: Invoice) => {
-    // This is complex transaction.
-    // 1. Insert Invoice
-    // 2. Insert Items
-    // 3. Update Stock
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) throw new Error("No user");
+    if (!user) throw new Error("No user logged in");
 
-    // 1. Invoice
+    console.log("Creating Invoice for Tenant:", user.id);
+
     const invPayload = {
         tenant_id: user.id,
         customer_id: invoice.customer.id,
@@ -241,11 +296,16 @@ export const createInvoice = async (invoice: Invoice) => {
         total_amount: invoice.totalAmount,
         tax_amount: (invoice.igst || 0) + (invoice.cgst || 0) + (invoice.sgst || 0),
         status: 'generated'
-        // Missing columns from schema? 'type', 'date', etc. I'll add what I can.
     };
 
     const { data: invData, error: invError } = await supabase.from('invoices').insert([invPayload]).select().single();
-    if (invError) throw invError;
+
+    if (invError) {
+        console.error("Invoice Insert Error:", invError);
+        throw invError;
+    }
+
+    console.log("Invoice Header Created:", invData.id);
 
     // 2. Items
     const itemsPayload = invoice.items.map(item => ({
@@ -278,7 +338,15 @@ export const createInvoice = async (invoice: Invoice) => {
 
 // --- STOCK LOGS ---
 export const fetchStockLogs = async (): Promise<StockLog[]> => {
-    const { data, error } = await supabase.from('stock_logs').select('*').order('created_at', { ascending: false });
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return [];
+
+    const { data, error } = await supabase
+        .from('stock_logs')
+        .select('*')
+        .eq('tenant_id', user.id)
+        .order('created_at', { ascending: false });
+
     if (error) return [];
     return data.map((row: any) => ({
         id: row.id,
@@ -310,32 +378,72 @@ export const adjustStockApi = async (productId: string, delta: number, reason: s
 };
 
 export const fetchGlobalStats = async () => {
-    // Platform Admin: Fetch stats from all tables (assuming RLS allows or we use admin role)
+    // Platform Admin: Fetch stats from all tables
     const { data: users } = await supabase.from('users').select('*');
-    const { data: invoices } = await supabase.from('invoices').select('total_amount');
-    const { data: shops } = await supabase.from('users').select('*').eq('role', 'ADMIN');
+    const { data: invoices } = await supabase.from('invoices').select('total_amount, tenant_id');
     const { data: settings } = await supabase.from('system_settings').select('*');
 
     const totalRevenue = invoices?.reduce((sum, inv: any) => sum + (inv.total_amount || 0), 0) || 0;
+
+    // Calculate per-tenant aggregates
+    const tenantMetrics = (invoices || []).reduce((acc: any, inv: any) => {
+        const tid = inv.tenant_id;
+        if (tid) {
+            if (!acc[tid]) acc[tid] = { revenue: 0, count: 0 };
+            acc[tid].revenue += (inv.total_amount || 0);
+            acc[tid].count += 1;
+        }
+        return acc;
+    }, {});
+
+    // Map existing users
+    const allUsers = (users || []).map((u: any) => ({
+        id: u.id,
+        name: u.name,
+        email: u.email,
+        role: u.role,
+        shopName: u.shop_name,
+        status: u.status,
+        plan: u.plan,
+        createdAt: u.created_at,
+        revenue: tenantMetrics[u.id]?.revenue || 0,
+        invoiceCount: tenantMetrics[u.id]?.count || 0
+    }));
+
+    // Find unique tenants from invoices to detect "Ghost" Tenants
+    const invoiceTenantIds = Object.keys(tenantMetrics);
+
+    const ghostTenants: any[] = [];
+    invoiceTenantIds.forEach(tid => {
+        if (tid && !allUsers.find(u => u.id === tid)) {
+            ghostTenants.push({
+                id: tid,
+                name: 'Unknown Operator',
+                email: 'sync@needed.com',
+                role: 'ADMIN',
+                shopName: `Ghost Tenant (${tid.substring(0, 8)})`,
+                status: 'active',
+                plan: 'pro',
+                isGhost: true,
+                revenue: tenantMetrics[tid]?.revenue || 0,
+                invoiceCount: tenantMetrics[tid]?.count || 0
+            });
+        }
+    });
+
+    const combinedUsers = [...allUsers, ...ghostTenants];
+    const shopCount = combinedUsers.filter(u => u.role === 'ADMIN' || u.isGhost).length;
 
     // Convert settings array to object map
     const systemSettings: any = {};
     settings?.forEach((s: any) => systemSettings[s.name] = (s.value === 'true' || s.value === true));
 
     return {
-        totalShops: shops?.length || 0,
+        totalShops: shopCount,
         totalRevenue,
-        allUsers: users?.map((u: any) => ({
-            id: u.id,
-            name: u.name,
-            email: u.email,
-            role: u.role,
-            shopName: u.shop_name,
-            status: u.status,
-            plan: u.plan,
-            createdAt: u.created_at
-        })) || [],
-        allInvoices: [] // Don't load all invoices for stats, too heavy
+        allUsers: combinedUsers,
+        allInvoices: [],
+        systemSettings
     };
 };
 
@@ -429,7 +537,15 @@ export const updateUserProfile = async (userId: string, data: { name: string; sh
 
 // --- WAREHOUSES ---
 export const fetchWarehouses = async () => {
-    const { data, error } = await supabase.from('warehouses').select('*').order('created_at', { ascending: false });
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return [];
+
+    const { data, error } = await supabase
+        .from('warehouses')
+        .select('*')
+        .eq('tenant_id', user.id)
+        .order('created_at', { ascending: false });
+
     if (error) throw error;
     return data || [];
 };

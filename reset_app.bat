@@ -1,0 +1,6 @@
+@echo off
+echo 🧹 Cleaning up zombie processes...
+taskkill /F /IM node.exe /T >nul 2>&1
+echo 🚀 Restarting GST-Master ERP on Safety Port 4321...
+echo Please open: http://localhost:4321
+npm run dev

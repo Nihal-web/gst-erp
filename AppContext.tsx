@@ -7,7 +7,8 @@ import {
   fetchInvoices, createInvoice,
   fetchSettings, saveSettings,
   fetchGlobalStats, fetchStockLogs, adjustStockApi, updateUserProfile as updateUserProfileApi,
-  fetchWarehouses, createWarehouse as createWarehouseApi, deleteWarehouse as deleteWarehouseApi
+  fetchWarehouses, createWarehouse as createWarehouseApi, deleteWarehouse as deleteWarehouseApi,
+  updateCustomerApi, deleteCustomerApi, fetchCustomerInvoices
 } from './services/apiService';
 import { INITIAL_PRODUCTS, INITIAL_CUSTOMERS, DEFAULT_FIRM_SETTINGS } from './constants';
 import { useAuth } from './AuthContext';
@@ -32,7 +33,9 @@ interface AppContextType {
   addProduct: (product: Product) => Promise<void>;
   deleteProduct: (id: string) => void;
   adjustStock: (productId: string, delta: number, reason: string) => void;
-  updateCustomer: (customer: Customer) => void;
+  updateCustomer: (customer: Customer) => Promise<void>;
+  deleteCustomer: (id: string) => Promise<void>;
+  getCustomerHistory: (customerId: string) => Promise<Invoice[]>;
   addCustomer: (customer: Customer) => Promise<void>;
   setFirm: (settings: FirmSettings) => Promise<void>;
   addWarehouse: (warehouse: Warehouse) => void;
@@ -40,6 +43,7 @@ interface AppContextType {
   showAlert: (message: string, type?: 'success' | 'error' | 'info') => void;
   refreshData: () => void;
   updateUserProfile: (name: string, shopName: string) => Promise<void>;
+  isLoaded: boolean;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -82,8 +86,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setInvoices(invs);
         setStockLogs(logs);
         setWarehouses(wh || []);
-        if (sets) setFirm(sets);
-        else setFirm({ ...DEFAULT_FIRM_SETTINGS, name: user.shopName });
+        if (sets) {
+          console.log("Settings synced from cloud:", sets.name);
+          setFirm(sets);
+        } else {
+          console.log("No cloud settings found, using default with shop name:", user.shopName);
+          setFirm({ ...DEFAULT_FIRM_SETTINGS, name: user.shopName });
+        }
       }
     } catch (e: any) {
       console.error("Failed to load data from sync engine", e);
@@ -180,9 +189,33 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     showAlert('Product removed from inventory.', 'info');
   };
 
-  const updateCustomer = (customer: Customer) => {
-    setCustomers(prev => prev.map(c => (c.id === customer.id ? customer : c)));
-    showAlert('Customer profile updated locally.', 'success');
+  const updateCustomer = async (customer: Customer) => {
+    try {
+      const updated = await updateCustomerApi(customer);
+      setCustomers(prev => prev.map(c => (c.id === customer.id ? updated : c)));
+      showAlert('Customer profile updated.', 'success');
+    } catch (e) {
+      showAlert('Failed to update customer.', 'error');
+    }
+  };
+
+  const deleteCustomer = async (id: string) => {
+    try {
+      await deleteCustomerApi(id);
+      setCustomers(prev => prev.filter(c => c.id !== id));
+      showAlert('Customer removed successfully.', 'info');
+    } catch (e) {
+      showAlert('Failed to delete customer.', 'error');
+    }
+  };
+
+  const getCustomerHistory = async (customerId: string): Promise<Invoice[]> => {
+    try {
+      return await fetchCustomerInvoices(customerId);
+    } catch (e) {
+      showAlert('Failed to fetch customer history.', 'error');
+      return [];
+    }
   };
 
   const addWarehouse = async (warehouse: Warehouse) => {
@@ -223,9 +256,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     <AppContext.Provider value={{
       products, customers, invoices, stockLogs, firm, globalStats,
       warehouses,
-      addInvoice, updateProduct, addProduct, deleteProduct, adjustStock, updateCustomer, addCustomer, setFirm: handleSetFirm, showAlert,
+      addInvoice, updateProduct, addProduct, deleteProduct, adjustStock, showAlert,
       addWarehouse, deleteWarehouse, updateUserProfile,
-      refreshData: loadData
+      updateCustomer, deleteCustomer, getCustomerHistory,
+      addCustomer, setFirm: handleSetFirm,
+      refreshData: loadData,
+      isLoaded
     }}>
       {children}
       {alert && (
