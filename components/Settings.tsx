@@ -62,29 +62,60 @@ const Settings: React.FC = () => {
     let csvContent = "data:text/csv;charset=utf-8,";
 
     if (type === 'GSTR-1') {
-      csvContent += "Invoice No,Date,Customer Name,GSTIN,Taxable Value,IGST,CGST,SGST,Total Amount\n";
+      // Standard GSTR-1 Columns
+      csvContent += "GSTIN/UIN of Recipient,Receiver Name,Invoice Number,Invoice Date,Invoice Value,Place Of Supply,Reverse Charge,Applicable % of Tax Rate,Invoice Type,E-Commerce GSTIN,Rate,Taxable Value,Cess Amount\n";
+
       invoices.forEach(inv => {
-        const row = [
-          inv.invoiceNo,
-          inv.date,
-          inv.customer.name,
-          inv.customer.gstin,
-          inv.totalTaxable,
-          inv.igst || 0,
-          inv.cgst || 0,
-          inv.sgst || 0,
-          inv.totalAmount
-        ].join(",");
-        csvContent += row + "\n";
+        // We need to iterate items to get accurate rate-wise breakdown if needed, 
+        // but for now we'll do a simplified row per invoice as per basic request, 
+        // OR better: Aggregate by Tax Rate per Invoice.
+
+        // Group items by GST Rate
+        const rateGroups: { [key: number]: number } = {};
+        inv.items.forEach(item => {
+          rateGroups[item.gstPercent] = (rateGroups[item.gstPercent] || 0) + item.taxableValue;
+        });
+
+        Object.keys(rateGroups).forEach(rate => {
+          const taxable = rateGroups[Number(rate)];
+          const row = [
+            inv.customer.gstin || '',
+            inv.customer.name,
+            inv.invoiceNo,
+            inv.date, // Format DD-MMM-YYYY usually required, but keeping string for now
+            inv.totalAmount,
+            `${inv.customer.stateCode}-${inv.customer.state}`,
+            inv.isReverseCharge ? 'Y' : 'N',
+            '', // Applicable % (legacy)
+            'Regular', // Invoice Type (Regular, SEZ, etc.)
+            '', // E-com GSTIN
+            rate,
+            taxable,
+            0 // Cess
+          ].join(",");
+          csvContent += row + "\n";
+        });
       });
+
     } else if (type === 'GSTR-3B') {
-      csvContent += "Section,Total Taxable,Total IGST,Total CGST,Total SGST\n";
+      // GSTR-3B 3.1 Format
+      csvContent += "Nature of Supplies,Total Taxable Value,Integrated Tax,Central Tax,State/UT Tax,Cess\n";
+
       const totalTaxable = invoices.reduce((s, i) => s + i.totalTaxable, 0);
       const totalIGST = invoices.reduce((s, i) => s + (i.igst || 0), 0);
       const totalCGST = invoices.reduce((s, i) => s + (i.cgst || 0), 0);
       const totalSGST = invoices.reduce((s, i) => s + (i.sgst || 0), 0);
 
-      csvContent += `Outward Supplies,${totalTaxable},${totalIGST},${totalCGST},${totalSGST}\n`;
+      // (a) Outward taxable supplies (other than zero rated, nil rated and exempted)
+      csvContent += `(a) Outward taxable supplies (other than zero rated nil rated and exempted),${totalTaxable},${totalIGST},${totalCGST},${totalSGST},0\n`;
+      // (b) Outward taxable supplies (zero rated)
+      csvContent += `(b) Outward taxable supplies (zero rated),0,0,0,0,0\n`;
+      // (c) Other outward supplies (Nil rated exempted)
+      csvContent += `(c) Other outward supplies (Nil rated exempted),0,0,0,0,0\n`;
+      // (d) Inward supplies (liable to reverse charge)
+      csvContent += `(d) Inward supplies (liable to reverse charge),0,0,0,0,0\n`;
+      // (e) Non-GST outward supplies
+      csvContent += `(e) Non-GST outward supplies,0,0,0,0,0\n`;
     }
 
     // Trigger Download
@@ -324,6 +355,23 @@ const Settings: React.FC = () => {
                 />
               </div>
 
+              <div className="sm:col-span-2 pt-4">
+                <h3 className="text-lg lg:text-xl font-black text-slate-800 mb-6 lg:mb-8 flex items-center gap-3">
+                  <span className="text-teal-500">📜</span> Default Declarations
+                </h3>
+              </div>
+
+              <div className="sm:col-span-2">
+                <label className="text-[9px] font-black uppercase text-slate-500 tracking-widest block mb-2">Terms & Conditions (One per line)</label>
+                <textarea
+                  rows={4}
+                  value={Array.isArray(formData.terms) ? formData.terms.join('\n') : formData.terms}
+                  onChange={(e) => handleChange('terms', e.target.value.split('\n'))}
+                  className="w-full bg-white border border-slate-200 rounded-2xl py-3 px-4 font-bold text-slate-800 resize-none outline-none shadow-sm text-xs"
+                  placeholder="e.g. Sales are final&#10;Payment due in 30 days"
+                ></textarea>
+              </div>
+
               <div className="sm:col-span-2">
                 <label className="text-[9px] font-black uppercase text-slate-500 tracking-widest block mb-2">Legal Declaration (Footer)</label>
                 <textarea
@@ -336,7 +384,7 @@ const Settings: React.FC = () => {
 
               <button
                 type="submit"
-                className="sm:col-span-2 mt-2 py-4 bg-blue-600 text-white rounded-2xl font-black shadow-xl shadow-blue-200 hover:shadow-2xl active:scale-[0.98] transition-all text-xs lg:text-sm uppercase"
+                className="sm:col-span-2 mt-4 py-4 bg-blue-600 text-white rounded-2xl font-black shadow-xl shadow-blue-200 hover:shadow-2xl active:scale-[0.98] transition-all text-xs lg:text-sm uppercase"
               >
                 Save Profile Sync
               </button>

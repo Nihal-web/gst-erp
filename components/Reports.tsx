@@ -4,8 +4,10 @@ import { useApp } from '../AppContext';
 import { formatCurrency } from '../utils/helpers';
 import { InvoiceType } from '../types';
 
+import jsPDF from 'jspdf';
+
 const Reports: React.FC = () => {
-    const { invoices } = useApp();
+    const { invoices, firm } = useApp();
 
     const totalSales = invoices.reduce((sum, inv) => sum + inv.totalAmount, 0);
     const totalTax = invoices.reduce((sum, inv) => sum + (inv.cgst || 0) + (inv.sgst || 0) + (inv.igst || 0), 0);
@@ -20,6 +22,56 @@ const Reports: React.FC = () => {
         [InvoiceType.SERVICES]: invoices.filter(i => i.type === InvoiceType.SERVICES).reduce((s, i) => s + i.totalAmount, 0),
     };
 
+    const handleDownloadStatement = () => {
+        const doc = new jsPDF();
+
+        // Header
+        doc.setFontSize(22);
+        doc.setTextColor(33, 33, 33);
+        doc.text(firm.name || 'Financial Statement', 20, 20);
+
+        doc.setFontSize(10);
+        doc.setTextColor(100, 100, 100);
+        doc.text(`Generated: ${new Date().toLocaleDateString()}`, 20, 26);
+
+        doc.setLineWidth(0.5);
+        doc.line(20, 32, 190, 32);
+
+        // P&L Section
+        doc.setFontSize(14);
+        doc.setTextColor(0, 0, 0);
+        doc.text("Profit & Loss Summary", 20, 45);
+
+        doc.setFontSize(11);
+        doc.setTextColor(80, 80, 80);
+        doc.text(`Total Revenue: Rs. ${formatCurrency(totalSales)}`, 20, 55);
+        doc.text(`Estimated Expenses: Rs. ${formatCurrency(estimatedExpenses)}`, 20, 62);
+
+        doc.setFontSize(12);
+        doc.setTextColor(0, 128, 0); // Green
+        doc.text(`Net Profit: Rs. ${formatCurrency(netProfit)}`, 20, 72);
+
+        // Tax Section
+        doc.setTextColor(0, 0, 0);
+        doc.setFontSize(14);
+        doc.text("GST Liability Report", 20, 90);
+
+        doc.setFontSize(11);
+        doc.setTextColor(80, 80, 80);
+        doc.text(`Total Tax Collectable: Rs. ${formatCurrency(totalTax)}`, 20, 100);
+        doc.text(`Total Taxable Value: Rs. ${formatCurrency(totalTaxable)}`, 20, 107);
+
+        doc.text("Breakdown by Type:", 20, 117);
+        doc.text(`- Goods: Rs. ${formatCurrency(gstByType[InvoiceType.GOODS])}`, 25, 124);
+        doc.text(`- Services: Rs. ${formatCurrency(gstByType[InvoiceType.SERVICES])}`, 25, 131);
+
+        doc.setFontSize(9);
+        doc.setTextColor(150, 150, 150);
+        doc.text("This is a computer generated financial estimate.", 20, 280);
+
+        doc.save(`Financial_Statement_${new Date().toISOString().split('T')[0]}.pdf`);
+    };
+
     return (
         <div className="space-y-6 lg:space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
             <div className="flex justify-between items-end">
@@ -27,7 +79,10 @@ const Reports: React.FC = () => {
                     <h2 className="text-2xl lg:text-3xl font-black text-slate-800 tracking-tight">Financial Intelligence</h2>
                     <p className="text-slate-400 text-sm font-medium tracking-tight">Real-time profit & tax liability analysis.</p>
                 </div>
-                <button className="bg-blue-600 text-white px-6 py-2.5 rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl shadow-blue-100 hover:bg-blue-700 transition-all">
+                <button
+                    onClick={handleDownloadStatement}
+                    className="bg-blue-600 text-white px-6 py-2.5 rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl shadow-blue-100 hover:bg-blue-700 transition-all active:scale-95"
+                >
                     Download Statement
                 </button>
             </div>

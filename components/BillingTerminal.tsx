@@ -263,12 +263,12 @@ const BillingTerminal: React.FC = () => {
 
       // 4. Capture using html2canvas on the CLEAN container
       const canvas = await html2canvas(tempContainer, {
-        scale: 2,
+        scale: 3, // Higher DPI for crisper text
         useCORS: true,
         logging: false,
         backgroundColor: '#ffffff',
-        width: 794, // ~210mm in px
-        windowWidth: 1200,
+        width: 794, // 210mm @ 96 DPI
+        windowWidth: 794, // Match width to prevent responsive resizing
       });
 
       // 5. Cleanup
@@ -713,6 +713,28 @@ const BillingTerminal: React.FC = () => {
                   ))}
                 </tbody>
               </table>
+            </div>
+
+            {/* Inline Edit Details Section */}
+            <div className="px-6 lg:px-8 py-4 grid grid-cols-1 md:grid-cols-2 gap-6 bg-slate-50/30 border-t border-slate-100 mt-4 rounded-b-3xl mx-2">
+              <div>
+                <label className="text-[10px] uppercase font-black text-slate-400 block mb-2 tracking-widest">Terms & Conditions</label>
+                <textarea
+                  value={customTerms}
+                  onChange={e => setCustomTerms(e.target.value)}
+                  className="w-full bg-white border border-slate-200 rounded-xl p-3 text-xs font-bold h-24 outline-none focus:ring-2 focus:ring-blue-100 resize-none shadow-sm"
+                  placeholder="Enter invoice terms..."
+                />
+              </div>
+              <div>
+                <label className="text-[10px] uppercase font-black text-slate-400 block mb-2 tracking-widest">Declaration</label>
+                <textarea
+                  value={customDeclaration}
+                  onChange={e => setCustomDeclaration(e.target.value)}
+                  className="w-full bg-white border border-slate-200 rounded-xl p-3 text-xs font-bold h-24 outline-none focus:ring-2 focus:ring-blue-100 resize-none shadow-sm"
+                  placeholder="Enter declaration..."
+                />
+              </div>
             </div>
             <div className="p-6 lg:p-8 border-t border-slate-100 flex justify-end sticky bottom-0 bg-white/80 backdrop-blur-md z-10 shadow-[0_-4px_20px_rgba(0,0,0,0.03)] lg:shadow-none lg:static lg:bg-transparent">
               <button

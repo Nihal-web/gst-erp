@@ -18,7 +18,7 @@ const InvoiceView: React.FC<Props> = ({ invoice, firm }) => {
     }
   };
 
-  const ITEMS_PER_PAGE = 10;
+  const ITEMS_PER_PAGE = 14; // Increased items per page for efficiency
 
   // Chunk items into pages
   const pages = [];
@@ -31,276 +31,239 @@ const InvoiceView: React.FC<Props> = ({ invoice, firm }) => {
 
   return (
     <div className="flex flex-col gap-8 print:block print:gap-0">
+      {/* Print-specific style overrides and RGB Color enforcement for html2canvas */}
       <style>{`
+        @media print {
+          .print-break-after { break-after: page; }
+        }
+        /* Override Tailwind v4 OKLCH colors with standard HEX for html2canvas compatibility */
         .bg-black { background-color: #000000 !important; }
         .text-black { color: #000000 !important; }
         .bg-white { background-color: #ffffff !important; }
         .text-white { color: #ffffff !important; }
         .border-black { border-color: #000000 !important; }
         .border-white { border-color: #ffffff !important; }
-        .bg-gray-100 { background-color: #f3f4f6 !important; }
         .border-gray-300 { border-color: #d1d5db !important; }
-        .bg-gray-50 { background-color: #f9fafb !important; }
-        .text-gray-500 { color: #6b7280 !important; }
-        .text-gray-700 { color: #374151 !important; }
+        .border-gray-400 { border-color: #9ca3af !important; }
+        
+        .invoice-table th, .invoice-table td {
+          border-right: 1.5px solid #000;
+          padding: 4px 6px;
+        }
+        .invoice-table th:last-child, .invoice-table td:last-child {
+          border-right: none;
+        }
+        .invoice-table tr {
+          border-bottom: 1.5px solid #000;
+        }
+        .invoice-table {
+          border: 1.5px solid #000;
+          border-collapse: collapse;
+          width: 100%;
+          font-size: 11px;
+        }
       `}</style>
+
       {pages.map((itemChunk, pageIdx) => {
         const isLastPage = pageIdx === pages.length - 1;
-
-        // Dynamic spacer for professional alignment
-        const itemHeight = 15;
-        const tableHeaderHeight = 15;
-        const otherElementsHeight = isLastPage ? 180 : 80;
-        const remainingHeight = Math.max(0, 270 - (otherElementsHeight + tableHeaderHeight + (itemChunk.length * itemHeight)));
-        const spacerHeight = Math.min(120, remainingHeight);
 
         return (
           <div
             key={pageIdx}
-            className="bg-white text-black font-sans leading-tight border border-black flex flex-col mx-auto print:border-none print:shadow-none print:break-after-page mb-8 print:mb-0 box-border overflow-visible"
+            className="bg-white text-black font-sans box-border mx-auto print-break-after"
             style={{
               width: '210mm',
-              minHeight: '290mm',
-              padding: '6mm',
+              height: '297mm',
+              padding: '10mm',
+              fontSize: '11px',
+              display: 'flex',
+              flexDirection: 'column',
+              justifyContent: 'space-between'
             }}
           >
-            {/* Header Section */}
-            <div className="flex justify-between items-start border-b-4 border-black pb-3 mb-3">
-              <div className="flex-1">
-                <h1 className="text-3xl font-black text-black uppercase leading-none mb-1">{firm.name}</h1>
-                <p className="text-[10px] font-bold text-black uppercase tracking-widest mb-3 opacity-70">{firm.tagline}</p>
-                <div className="text-[11px] space-y-0.5 text-black">
-                  <p className="font-bold">{firm.address}</p>
-                  <p><strong>GSTIN:</strong> <span className="font-black">{firm.gstin}</span> | <strong>PAN:</strong> <span className="font-black">{firm.pan}</span></p>
-                  <p><strong>PH:</strong> {firm.phone} | {firm.email}</p>
-                </div>
-              </div>
-              <div className="text-right flex flex-col items-end">
-                <div className="bg-black text-white px-8 py-3 mb-2 font-black text-base uppercase tracking-widest">
-                  {getInvoiceTitle()}
-                </div>
-                {invoice.type === InvoiceType.EXPORT && (
-                  <p className="text-[11px] font-black uppercase text-black border-2 border-black px-3 py-1 mb-2">
-                    {invoice.exportType === 'WITHOUT_PAYMENT' ? 'EXPORT WITHOUT PAYMENT OF TAX (LUT)' : 'EXPORT WITH PAYMENT OF TAX (IGST)'}
-                  </p>
-                )}
-                {invoice.isReverseCharge && (
-                  <p className="text-[11px] font-black uppercase px-3 py-1 border border-black" style={{ backgroundColor: '#e2e8f0' }}>REVERSE CHARGE: YES</p>
-                )}
-                <p className="text-[10px] font-bold mt-2">Page {pageIdx + 1} of {pages.length}</p>
-              </div>
-            </div>
+            {/* Top Content Wrapper */}
+            <div className="flex-grow flex flex-col">
 
-            {/* Details Bar */}
-            <div className="grid grid-cols-2 gap-px bg-black border border-black mb-4">
-              <div className="bg-white p-4">
-                <p className="text-[10px] font-black text-black uppercase mb-0.5 opacity-60">Consignee (Billed To)</p>
-                <div className="mb-0.5">
-                  <h2 className="text-sm font-black text-black uppercase border-b-2 border-black inline-block leading-none pb-0.5">{invoice.customer.name}</h2>
-                </div>
-                <div className="text-[11px] space-y-0.5 text-black leading-tight">
-                  <p className="font-bold">{invoice.customer.address}</p>
-                  {invoice.customer.country && <p><strong>Country:</strong> {invoice.customer.country}</p>}
-                  <p><strong>GSTIN:</strong> <span className="font-black">{invoice.customer.gstin}</span></p>
-                  <p><strong>State:</strong> {invoice.customer.state} ({invoice.customer.stateCode})</p>
-                </div>
-              </div>
-              <div className="bg-white p-4 grid grid-cols-2 gap-4 text-[11px] border-l border-black">
-                <div className="flex flex-col border-b border-black pb-2">
-                  <span className="font-black text-black text-[9px] uppercase opacity-60">Invoice No.</span>
-                  <span className="font-black text-black text-sm">{invoice.invoiceNo}</span>
-                </div>
-                <div className="flex flex-col border-b border-black pb-2">
-                  <span className="font-black text-black text-[9px] uppercase opacity-60">Invoice Date</span>
-                  <span className="font-black text-black text-sm">{invoice.date}</span>
-                </div>
-                <div className="flex flex-col">
-                  <span className="font-black text-black text-[9px] uppercase opacity-60">Place of Supply</span>
-                  <span className="font-bold text-black">{invoice.customer.state}</span>
-                </div>
-                <div className="flex flex-col">
-                  <span className="font-black text-black text-[9px] uppercase opacity-60">Transport Mode</span>
-                  <span className="font-bold text-black">{invoice.transport || 'Internal/Surface'}</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Main Table */}
-            <div className="flex-1 flex flex-col overflow-visible">
-              <table className="w-full border-2 border-black text-[12px] border-collapse">
-                <thead>
-                  <tr className="bg-black text-white text-[10px] font-black uppercase tracking-widest">
-                    <th className="p-3 border-r border-white w-12 text-center">SR.</th>
-                    <th className="p-3 border-r border-white text-left">Description of Goods/Services</th>
-                    <th className="p-3 border-r border-white w-24 text-center">HSN/SAC</th>
-                    <th className="p-3 border-r border-white w-20 text-center">Qty</th>
-                    <th className="p-3 border-r border-white w-32 text-right">Unit Rate</th>
-                    <th className="p-3 text-right w-40">Taxable Val</th>
-                  </tr>
-                </thead>
-                <tbody className="text-black">
-                  {itemChunk.map((item, i) => (
-                    <tr key={i} className="border-b border-black font-bold align-top break-inside-avoid">
-                      <td className="p-3 border-r-2 border-black text-center">{(pageIdx * ITEMS_PER_PAGE) + i + 1}</td>
-                      <td className="p-3 border-r-2 border-black">
-                        <p className="font-black uppercase text-sm mb-1">{item.productName}</p>
-                        <p className="text-[9px] uppercase opacity-60">
-                          {isInterState ? `IGST @ ${item.gstPercent}%` : `CGST @ ${item.gstPercent / 2}% + SGST @ ${item.gstPercent / 2}%`}
-                        </p>
-                      </td>
-                      <td className="p-3 border-r-2 border-black text-center font-black">{item.hsn || item.sac}</td>
-                      <td className="p-3 border-r-2 border-black text-center uppercase">{item.qty} {item.unit}</td>
-                      <td className="p-3 border-r-2 border-black text-right">{formatCurrency(item.rate)}</td>
-                      <td className="p-3 text-right font-black">{formatCurrency(item.taxableValue)}</td>
-                    </tr>
-                  ))}
-                  {/* Conditional Height fill */}
-                  {spacerHeight > 5 && (
-                    <tr style={{ height: `${spacerHeight}mm` }}>
-                      <td className="border-r-2 border-black"></td>
-                      <td className="border-r-2 border-black"></td>
-                      <td className="border-r-2 border-black"></td>
-                      <td className="border-r-2 border-black"></td>
-                      <td className="border-r-2 border-black"></td>
-                      <td></td>
-                    </tr>
-                  )}
-                  {!isLastPage && (
-                    <tr className="font-black text-[10px] border-t-2 border-black" style={{ backgroundColor: '#f1f5f9' }}>
-                      <td colSpan={5} className="p-2 text-right uppercase italic">Totals Carried Forward to Next Page &raquo;&raquo;</td>
-                      <td className="p-2 text-right">₹{formatCurrency(itemChunk.reduce((s, it) => s + it.taxableValue, 0))}</td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-
-            {isLastPage && (
-              <>
-                {/* Summary Section */}
-                <div className="flex border-2 border-black border-t-0 bg-white overflow-visible break-inside-avoid mt-px">
-                  <div className="flex-1 p-4 border-r-2 border-black">
-                    <p className="text-[10px] font-black text-black uppercase mb-1 opacity-60">Total Amount In Words</p>
-                    <p className="text-[11px] font-black uppercase italic text-black leading-tight border-b border-black pb-2 mb-4">
-                      {numberToWords(invoice.totalAmount)}
+              {/* --- HEADER (Grid) --- */}
+              <div className="grid grid-cols-2 gap-4 mb-4 border-b-[1.5px] border-black pb-4">
+                <div className="pr-4">
+                  <h1 className="text-3xl font-black uppercase mb-1 tracking-tight">{firm.name}</h1>
+                  <p className="text-[10px] uppercase font-bold tracking-widest mb-3 opacity-75">{firm.tagline}</p>
+                  <div className="text-[10px] leading-snug font-medium">
+                    <p>{firm.address}</p>
+                    <p className="mt-1">
+                      GSTIN: <span className="font-bold">{firm.gstin}</span> &nbsp;|&nbsp;
+                      PAN: <span className="font-bold">{firm.pan}</span>
                     </p>
-
-                    <div className="grid grid-cols-2 gap-6 items-end">
-                      <div className="space-y-1">
-                        <p className="text-[9px] font-black text-black uppercase opacity-60">Bank Transfer Details</p>
-                        <div className="text-[10px] font-black text-black space-y-0.5">
-                          <p>BANK: {firm.bankName}</p>
-                          <p>AC NO: {firm.accNumber}</p>
-                          <p>IFSC: {firm.ifsc}</p>
-                          <p>UPI: {firm.upiId}</p>
-                        </div>
-                      </div>
-                      <div className="flex flex-col items-center">
-                        <img
-                          src={`https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=${encodeURIComponent(`upi://pay?pa=${firm.upiId}&am=${invoice.totalAmount}&pn=${encodeURIComponent(firm.name)}&tr=${invoice.invoiceNo}`)}`}
-                          alt="UPI"
-                          className="w-20 h-20 border-2 border-black p-1 bg-white mb-1"
-                        />
-                        <p className="text-[7px] font-black uppercase tracking-tighter">Scan to Pay via UPI</p>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="w-72" style={{ backgroundColor: '#f8fafc' }}>
-                    <div className="grid grid-cols-2 border-b-2 border-black">
-                      <span className="p-3 text-[10px] font-black uppercase text-black border-r-2 border-black">Sub Total</span>
-                      <span className="p-3 text-[12px] font-black text-right text-black">{formatCurrency(invoice.totalTaxable)}</span>
-                    </div>
-                    {/* HSN/SAC Summary Table - Replaces Simple Tax Summary */}
-                    {/* HSN/SAC Summary Table - Detailed Split */}
-                    <div className="border-b-2 border-black">
-                      {isInterState ? (
-                        // IGST Layout
-                        <div className="grid grid-cols-4 bg-black text-white text-[8px] font-black uppercase tracking-wider">
-                          <div className="p-1 border-r border-white text-center">HSN/SAC</div>
-                          <div className="p-1 border-r border-white text-right">Taxable Val</div>
-                          <div className="p-1 border-r border-white text-right">IGST Rate</div>
-                          <div className="p-1 text-right">IGST Amt</div>
-                        </div>
-                      ) : (
-                        // CGST + SGST Layout
-                        <div className="grid grid-cols-6 bg-black text-white text-[8px] font-black uppercase tracking-wider">
-                          <div className="p-1 border-r border-white text-center">HSN/SAC</div>
-                          <div className="p-1 border-r border-white text-right col-span-1">Taxable</div>
-                          <div className="p-1 border-r border-white text-right">CGST %</div>
-                          <div className="p-1 border-r border-white text-right">CGST Amt</div>
-                          <div className="p-1 border-r border-white text-right">SGST %</div>
-                          <div className="p-1 text-right">SGST Amt</div>
-                        </div>
-                      )}
-
-                      {Object.values(invoice.items.reduce((acc: Record<string, { hsn: string; taxable: number; tax: number; rate: number }>, item) => {
-                        const hsn = item.hsn || item.sac || 'NA';
-                        if (!acc[hsn]) acc[hsn] = { hsn, taxable: 0, tax: 0, rate: item.gstPercent };
-                        acc[hsn].taxable += item.taxableValue;
-                        acc[hsn].tax += (item.taxableValue * (item.gstPercent / 100));
-                        return acc;
-                      }, {})).map((row: { hsn: string; taxable: number; tax: number; rate: number }) => (
-                        <div key={row.hsn} className={`grid ${isInterState ? 'grid-cols-4' : 'grid-cols-6'} text-[9px] font-bold border-b border-gray-300 last:border-0`}>
-                          {isInterState ? (
-                            <>
-                              <div className="p-1 border-r border-black text-center">{row.hsn}</div>
-                              <div className="p-1 border-r border-black text-right">{formatCurrency(row.taxable)}</div>
-                              <div className="p-1 border-r border-black text-right">{row.rate}%</div>
-                              <div className="p-1 text-right">{formatCurrency(row.tax)}</div>
-                            </>
-                          ) : (
-                            <>
-                              <div className="p-1 border-r border-black text-center">{row.hsn}</div>
-                              <div className="p-1 border-r border-black text-right">{formatCurrency(row.taxable)}</div>
-                              <div className="p-1 border-r border-black text-right">{row.rate / 2}%</div>
-                              <div className="p-1 border-r border-black text-right">{formatCurrency(row.tax / 2)}</div>
-                              <div className="p-1 border-r border-black text-right">{row.rate / 2}%</div>
-                              <div className="p-1 text-right">{formatCurrency(row.tax / 2)}</div>
-                            </>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-
-                    <div className="grid grid-cols-2 border-b-2 border-black bg-gray-100">
-                      <span className="p-2 text-[10px] font-black uppercase text-black border-r-2 border-black">Total Tax</span>
-                      <span className="p-2 text-[12px] font-black text-right text-black">
-                        ₹{formatCurrency((invoice.igst || 0) + (invoice.cgst || 0) + (invoice.sgst || 0))}
-                      </span>
-                    </div>
-                    <div className="grid grid-cols-2 bg-black text-white">
-                      <span className="p-4 text-[12px] font-black uppercase tracking-widest border-r-2 border-white">Grand Total</span>
-                      <span className="p-4 text-xl font-black text-right">₹{formatCurrency(invoice.totalAmount)}</span>
-                    </div>
-                    <div className="p-4 flex flex-col justify-end items-center min-h-[40mm]">
-                      <p className="text-[10px] font-black uppercase mb-8 opacity-70 text-center">Authorized Signatory for {firm.name}</p>
-                      <div className="w-full border-t-2 border-black pt-2 text-center">
-                        <p className="text-[11px] font-black uppercase tracking-widest">Seal & Signature</p>
-                      </div>
-                    </div>
+                    <p>Ph: {firm.phone} | {firm.email}</p>
                   </div>
                 </div>
 
-                <div className="mt-auto pt-4 border-t-2 border-black break-inside-avoid">
-                  <div className="grid grid-cols-1 text-[10px] text-black">
-                    <p className="font-black uppercase mb-1 underline">Declaration & Terms:</p>
-                    <p className="font-bold mb-3 opacity-90">{firm.declaration}</p>
-                    <ul className="list-disc pl-6 grid grid-cols-2 gap-x-10 font-bold opacity-80">
-                      {firm.terms.map((t, idx) => <li key={idx} className="mb-0.5">{t}</li>)}
-                    </ul>
+                <div className="flex flex-col items-end text-right">
+                  <div className="bg-black text-white px-6 py-2 font-black text-sm uppercase tracking-widest mb-3">
+                    {getInvoiceTitle()}
                   </div>
-                  <p className="text-center font-black uppercase tracking-widest text-[9px] mt-4 py-2 border-t border-black">
-                    Thank you for your business! Visit {firm.web} for support.
-                  </p>
+                  <div className="w-full">
+                    <div className="grid grid-cols-[auto_1fr] gap-x-3 text-[10px] text-right justify-end items-center">
+                      <span className="font-bold opacity-60 uppercase tracking-wide">Invoice No:</span>
+                      <span className="font-black text-sm">{invoice.invoiceNo}</span>
+
+                      <span className="font-bold opacity-60 uppercase tracking-wide">Date:</span>
+                      <span className="font-bold text-sm">{invoice.date}</span>
+
+                      <span className="font-bold opacity-60 uppercase tracking-wide">Place of Supply:</span>
+                      <span className="font-bold">{invoice.customer.state}</span>
+                    </div>
+                  </div>
                 </div>
-              </>
-            )}
-            {!isLastPage && (
-              <div className="mt-auto pt-4 border-t-2 border-black text-right">
-                <p className="text-[10px] font-black uppercase tracking-widest animate-pulse">Continued on Page {pageIdx + 2}...</p>
               </div>
-            )}
+
+              {/* --- BILL TO (Grid) --- */}
+              <div className="grid grid-cols-2 border-[1.5px] border-black mb-4">
+                <div className="p-3 border-r-[1.5px] border-black">
+                  <p className="text-[9px] font-black uppercase opacity-50 mb-1 tracking-wider">Billed To</p>
+                  <h2 className="text-sm font-black uppercase mb-1">{invoice.customer.name}</h2>
+                  <div className="text-[10px] leading-tight font-medium opacity-90">
+                    <p>{invoice.customer.address}</p>
+                    <p className="mt-1">GSTIN: <span className="font-bold">{invoice.customer.gstin}</span></p>
+                    <p>State: {invoice.customer.state} ({invoice.customer.stateCode})</p>
+                  </div>
+                </div>
+                <div className="p-3">
+                  <p className="text-[9px] font-black uppercase opacity-50 mb-2 tracking-wider">Details</p>
+                  <div className="flex flex-col gap-1 text-[10px]">
+                    <div className="flex justify-between border-b border-dashed border-gray-400 pb-1">
+                      <span className="opacity-70 uppercase text-[9px] font-bold">Reverse Charge</span>
+                      <span className="font-bold">{invoice.isReverseCharge ? 'Yes' : 'No'}</span>
+                    </div>
+                    <div className="flex justify-between border-b border-dashed border-gray-400 pb-1">
+                      <span className="opacity-70 uppercase text-[9px] font-bold">Vehicle/Transport</span>
+                      <span className="font-bold">{invoice.transport || 'NA'}</span>
+                    </div>
+                    {invoice.poNo && (
+                      <div className="flex justify-between border-b border-dashed border-gray-400 pb-1">
+                        <span className="opacity-70 uppercase text-[9px] font-bold">PO No</span>
+                        <span className="font-bold">{invoice.poNo}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* --- ITEMS TABLE --- */}
+              <div className="flex-grow">
+                <table className="invoice-table">
+                  <thead>
+                    <tr className="bg-black text-white uppercase text-[9px] font-bold tracking-wider">
+                      <th className="w-10 text-center py-2">Sr</th>
+                      <th className="text-left py-2 pl-2">Description</th>
+                      <th className="w-20 text-center py-2">HSN/SAC</th>
+                      <th className="w-14 text-center py-2">Qty</th>
+                      <th className="w-14 text-right py-2">Unit</th>
+                      <th className="w-24 text-right py-2">Rate</th>
+                      <th className="w-28 text-right py-2 pr-2">Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {itemChunk.map((item, idx) => (
+                      <tr key={idx}>
+                        <td className="text-center font-bold">{(pageIdx * ITEMS_PER_PAGE) + idx + 1}</td>
+                        <td className="py-2 pl-2">
+                          <p className="font-bold text-[10px]">{item.productName}</p>
+                          <p className="text-[8px] opacity-60 mt-0.5 tracking-wide">
+                            {isInterState ? `IGST: ${item.gstPercent}%` : `CGST:${item.gstPercent / 2}% | SGST:${item.gstPercent / 2}%`}
+                          </p>
+                        </td>
+                        <td className="text-center font-bold">{item.hsn || item.sac}</td>
+                        <td className="text-center font-bold">{item.qty}</td>
+                        <td className="text-right text-[9px] uppercase">{item.unit}</td>
+                        <td className="text-right">{formatCurrency(item.rate)}</td>
+                        <td className="text-right font-black pr-2">{formatCurrency(item.taxableValue)}</td>
+                      </tr>
+                    ))}
+                    {/* Fill empty rows if needed to maintain structure */}
+                    {Array.from({ length: Math.max(0, 5 - itemChunk.length) }).map((_, i) => (
+                      <tr key={`empty-${i}`} style={{ height: '24px' }}>
+                        <td></td><td></td><td></td><td></td><td></td><td></td><td></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* --- FOOTER SECTION --- */}
+            <div>
+              {isLastPage ? (
+                <div className="mt-4 border-[1.5px] border-black text-[10px]">
+                  {/* Summary Grid */}
+                  <div className="grid grid-cols-[2fr_1fr] border-b-[1.5px] border-black">
+                    {/* Bottom Left: Words & Bank */}
+                    <div className="p-3 border-r-[1.5px] border-black flex flex-col justify-between">
+                      <div>
+                        <p className="uppercase opacity-50 text-[8px] font-bold tracking-wider">Amount in Words</p>
+                        <p className="font-black italic text-sm mt-1">{numberToWords(invoice.totalAmount)}</p>
+                      </div>
+
+                      <div className="mt-6 flex gap-8">
+                        <div className="flex-1">
+                          <p className="font-black uppercase mb-2 border-b border-black inline-block text-[9px]">Bank Details</p>
+                          <div className="grid grid-cols-[auto_1fr] gap-x-2 text-[10px]">
+                            <span className="opacity-70 font-bold">Bank:</span> <span className="font-bold">{firm.bankName}</span>
+                            <span className="opacity-70 font-bold">A/c No:</span> <span className="font-bold">{firm.accNumber}</span>
+                            <span className="opacity-70 font-bold">IFSC:</span> <span className="font-bold">{firm.ifsc}</span>
+                          </div>
+                        </div>
+                        <div className="flex-1 border-l border-gray-300 pl-4">
+                          <p className="font-black uppercase mb-2 border-b border-black inline-block text-[9px]">Terms & Conditions</p>
+                          <ul className="list-disc pl-3 leading-tight opacity-80 text-[9px]">
+                            {firm.terms.slice(0, 2).map((t, i) => <li key={i}>{t}</li>)}
+                          </ul>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Bottom Right: Totals */}
+                    <div>
+                      <div className="flex justify-between p-2 border-b border-gray-300">
+                        <span className="font-bold opacity-80">Taxable Amount</span>
+                        <span className="font-bold">{formatCurrency(invoice.totalTaxable)}</span>
+                      </div>
+                      <div className="flex justify-between p-2 border-b border-gray-300">
+                        <span className="font-bold opacity-80">Total Tax</span>
+                        <span className="font-bold">{formatCurrency(invoice.items.reduce((acc, item) => acc + (item.taxableValue * item.gstPercent / 100), 0))}</span>
+                      </div>
+                      <div className="flex justify-between p-3 bg-black text-white items-center mt-[-1px]">
+                        <span className="font-black text-xl tracking-widest">TOTAL</span>
+                        <span className="font-black text-xl">₹{formatCurrency(invoice.totalAmount)}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Signatures */}
+                  <div className="flex justify-between items-end p-4 h-28">
+                    <div className="w-1/2 text-[9px] opacity-70 leading-relaxed">
+                      <p className="font-bold underline mb-1">Declaration:</p>
+                      <p>{firm.declaration}</p>
+                    </div>
+                    <div className="w-1/3 flex flex-col items-center justify-end h-full">
+                      <p className="font-bold uppercase text-[9px] mb-8 text-center">For {firm.name}</p>
+                      <div className="border-t border-black w-full pt-1 font-bold uppercase text-[9px] text-center tracking-wider"> Authorized Signatory </div>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="mt-4 text-center text-[10px] font-bold italic opacity-60">
+                  Continued on next page...
+                </div>
+              )}
+
+              {/* Static Page Count */}
+              <div className="text-right text-[9px] font-bold opacity-40 mt-2">
+                Page {pageIdx + 1} of {pages.length}
+              </div>
+            </div>
+
           </div>
         );
       })}
