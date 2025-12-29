@@ -1,4 +1,4 @@
-import { createClient } from '@supabase/supabase-js';
+import { supabase } from '../supabaseClient';
 import { GoogleGenAI } from '@google/genai';
 
 export interface HSNSuggestion {
@@ -8,11 +8,6 @@ export interface HSNSuggestion {
   confidence: number;
   type: 'GOODS' | 'SERVICES';
 }
-
-// Clients configuration
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || '';
-const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
-const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY || '';
 let genAIInstance: any = null;

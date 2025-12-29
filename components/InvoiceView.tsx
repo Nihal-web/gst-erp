@@ -45,13 +45,11 @@ const InvoiceView: React.FC<Props> = ({ invoice, firm }) => {
         return (
           <div
             key={pageIdx}
-            className="bg-white text-black font-sans leading-tight border border-black flex flex-col mx-auto print:border-none print:shadow-none print:break-after-page mb-8 print:mb-0"
+            className="bg-white text-black font-sans leading-tight border border-black flex flex-col mx-auto print:border-none print:shadow-none print:break-after-page mb-8 print:mb-0 box-border overflow-visible"
             style={{
               width: '210mm',
               minHeight: '297mm',
               padding: '12mm',
-              boxSizing: 'border-box',
-              overflow: 'visible'
             }}
           >
             {/* Header Section */}

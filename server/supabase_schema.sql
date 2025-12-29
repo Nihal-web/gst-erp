@@ -40,7 +40,7 @@ CREATE TABLE IF NOT EXISTS packaging_units (
 CREATE TABLE IF NOT EXISTS users (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   email VARCHAR(255) NOT NULL UNIQUE,
-  password_hash VARCHAR(255) NOT NULL,
+  password_hash VARCHAR(255),
   name VARCHAR(255) NOT NULL,
   role VARCHAR(50) NOT NULL,
   shop_name VARCHAR(255) NOT NULL,
@@ -98,11 +98,11 @@ CREATE TABLE IF NOT EXISTS sale_ledger (
 );
 
 -- Create indexes for better query performance
-CREATE INDEX idx_customers_tenant ON customers(tenant_id);
-CREATE INDEX idx_inventory_tenant ON inventory(tenant_id);
-CREATE INDEX idx_invoices_tenant ON invoices(tenant_id);
-CREATE INDEX idx_invoices_customer ON invoices(customer_id);
-CREATE INDEX idx_invoice_items_invoice ON invoice_items(invoice_id);
-CREATE INDEX idx_firm_settings_tenant ON firm_settings(tenant_id);
-CREATE INDEX idx_sale_ledger_tenant ON sale_ledger(tenant_id);
-CREATE INDEX idx_packaging_units_product ON packaging_units(product_id);
+CREATE INDEX IF NOT EXISTS idx_customers_tenant ON customers(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_inventory_tenant ON inventory(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_invoices_tenant ON invoices(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_invoices_customer ON invoices(customer_id);
+CREATE INDEX IF NOT EXISTS idx_invoice_items_invoice ON invoice_items(invoice_id);
+CREATE INDEX IF NOT EXISTS idx_firm_settings_tenant ON firm_settings(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_sale_ledger_tenant ON sale_ledger(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_packaging_units_product ON packaging_units(product_id);

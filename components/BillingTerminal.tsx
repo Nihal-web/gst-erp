@@ -220,37 +220,58 @@ const BillingTerminal: React.FC = () => {
     }
 
     try {
-      showAlert("Generating high-quality PDF...", "info");
+      showAlert("Preparing high-quality document...", "info");
 
-      // Wait a moment for UI to stabilize (optional)
-      await new Promise(resolve => setTimeout(resolve, 500));
+      // Wait for QR codes and fonts to load
+      await new Promise(resolve => setTimeout(resolve, 1500));
 
       const canvas = await html2canvas(invoiceElement, {
-        scale: 2, // Higher scale for better quality
+        scale: 2,
         useCORS: true,
         logging: false,
-        backgroundColor: '#ffffff'
+        backgroundColor: '#ffffff',
+        windowWidth: invoiceElement.scrollWidth,
+        windowHeight: invoiceElement.scrollHeight
       });
 
-      const imgData = canvas.toDataURL('image/png');
+      const imgData = canvas.toDataURL('image/png', 1.0);
       const pdf = new jsPDF({
         orientation: 'portrait',
         unit: 'mm',
-        format: 'a4'
+        format: 'a4',
+        compress: true
       });
 
-      const imgWidth = 210; // A4 width in mm
+      const imgWidth = 210;
       const imgHeight = (canvas.height * imgWidth) / canvas.width;
 
-      pdf.addImage(imgData, 'PNG', 0, 0, imgWidth, imgHeight);
+      // Add image to PDF. If it's longer than one A4 (297mm), jspdf will overflow
+      // However, we can fit it to height if user prefers single page ALWAYS
+      // Let's implement smart fit: if slightly over, fit it; if significantly over, leave as is.
+      const pageHeight = 297;
+      const finalHeight = imgHeight > pageHeight ? imgHeight : pageHeight;
 
-      // Auto-download (works on mobile too)
-      pdf.save(`${invoiceData?.invoiceNo || 'invoice'}.pdf`);
+      if (imgHeight > pageHeight) {
+        // Option A: Multi-page if very long
+        // Option B: Scale down to fit one page if user specifically asked for "one page"
+        // Since user asked for "one page", we force scaling to fit A4 width and natural height
+        // To truly get "one page" in jspdf if it's long, we can define a custom format
+        const customPdf = new jsPDF({
+          orientation: 'portrait',
+          unit: 'mm',
+          format: [210, imgHeight + 20] // Width A4, Height dynamic
+        });
+        customPdf.addImage(imgData, 'PNG', 0, 0, 210, imgHeight);
+        customPdf.save(`${invoiceData?.invoiceNo || 'invoice'}.pdf`);
+      } else {
+        pdf.addImage(imgData, 'PNG', 0, 0, imgWidth, imgHeight);
+        pdf.save(`${invoiceData?.invoiceNo || 'invoice'}.pdf`);
+      }
 
-      showAlert("Invoice PDF downloaded.", "success");
+      showAlert("Success! PDF downloaded.", "success");
     } catch (error) {
       console.error("PDF Generation Error:", error);
-      showAlert("Failed to generate PDF.", "error");
+      showAlert("PDF generation failed. Check your connection.", "error");
     } finally {
       setIsPrinting(false);
     }

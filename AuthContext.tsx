@@ -23,31 +23,49 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [user, setUser] = useState<User | null>(null);
   const [originalRole, setOriginalRole] = useState<UserRole | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-
   useEffect(() => {
+    // Fail-safe: Force loading to stop after 6 seconds to prevent permanent hang
+    const timer = setTimeout(() => {
+      if (isLoading) {
+        console.warn("Auth initialization timed out - forcing loading: false");
+        setIsLoading(false);
+      }
+    }, 6000);
+
     // Listen for auth state changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      console.log("Auth State Change:", event, session?.user?.id);
+
       if (session?.user) {
-        setIsLoading(true);
-        await fetchProfile(session.user.id, session.user.email!);
-      } else if (event === 'SIGNED_OUT') {
+        fetchProfile(session.user.id, session.user.email!);
+      } else {
         setUser(null);
         setOriginalRole(null);
-        setIsLoading(false);
-      } else {
-        // Handle INITIAL_SESSION with no user
         setIsLoading(false);
       }
     });
 
-    return () => subscription.unsubscribe();
+    // Handle initial check as well (some browsers delay the event)
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user && !user) {
+        fetchProfile(session.user.id, session.user.email!);
+      } else if (!session) {
+        setIsLoading(false);
+      }
+    });
+
+    return () => {
+      clearTimeout(timer);
+      subscription.unsubscribe();
+    };
   }, []);
 
   const fetchProfile = async (userId: string, email: string) => {
+    console.log("Fetching profile for:", userId);
     try {
-      // Get auth user metadata
-      const { data: { user: authUser } } = await supabase.auth.getUser();
-      const meta = authUser?.user_metadata || {};
+      // Get session instead of getUser for performance
+      const { data: { session } } = await supabase.auth.getSession();
+      const meta = session?.user?.user_metadata || {};
 
       const { data, error } = await supabase
         .from('users')
@@ -56,45 +74,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         .maybeSingle();
 
       if (data) {
-        // Update user record if metadata has more info (sync)
-        if (meta.name && (data.name === 'User' || !data.name)) {
-          const { data: updated } = await supabase.from('users').update({
-            name: meta.name,
-            shop_name: meta.shop_name || data.shop_name
-          }).eq('id', userId).select().single();
-
-          if (updated) {
-            setUser({ ...updated, email, name: meta.name || updated.name, shopName: meta.shop_name || updated.shop_name });
-            setOriginalRole(updated.role as UserRole);
-            return;
-          }
-        }
         setUser({ ...data, email, name: meta.name || data.name, shopName: meta.shop_name || data.shop_name });
         setOriginalRole(data.role as UserRole);
       } else {
-        // Check for legacy user by email
-        const { data: legacyUser } = await supabase
-          .from('users')
-          .select('*')
-          .eq('email', email)
-          .maybeSingle();
-
-        if (legacyUser) {
-          const { data: migrated } = await supabase
-            .from('users')
-            .update({ id: userId, name: meta.name || legacyUser.name })
-            .eq('email', email)
-            .select()
-            .single();
-
-          if (migrated) {
-            setUser({ ...migrated, email, name: meta.name || migrated.name, shopName: meta.shop_name || migrated.shop_name });
-            setOriginalRole(migrated.role as UserRole);
-            return;
-          }
-        }
-
         // Create new profile if it doesn't exist
+        console.log("Creating new profile for:", email);
         const newUser = {
           id: userId,
           email,
@@ -114,8 +98,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (created) {
           setUser({ ...created, email, name: created.name, shopName: created.shop_name } as any);
           setOriginalRole(created.role as UserRole);
-        } else {
-          console.error("Failed to create/fetch profile", insErr);
+        } else if (insErr) {
+          console.error("Profile creation failed", insErr);
         }
       }
     } catch (e) {

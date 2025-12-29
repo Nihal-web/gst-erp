@@ -68,6 +68,7 @@ Publish: dist
 VITE_API_URL            = https://gst-erp-backend.onrender.com/api
 VITE_SUPABASE_URL       = https://xxxxx.supabase.co
 VITE_SUPABASE_ANON_KEY  = eyJ...
+VITE_GEMINI_API_KEY     = AIza...
 ```
 
 ✅ Frontend is live!
