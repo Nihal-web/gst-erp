@@ -207,7 +207,7 @@ const InvoiceView: React.FC<Props> = ({ invoice, firm }) => {
 
                       <div className="mt-6 flex gap-8">
                         <div className="flex-1">
-                          <p className="font-black uppercase mb-2 border-b border-black inline-block text-[9px]">Bank Details</p>
+                          <p className="font-black uppercase mb-2 underline underline-offset-2 text-[9px]">Bank Details</p>
                           <div className="grid grid-cols-[auto_1fr] gap-x-2 text-[10px]">
                             <span className="opacity-70 font-bold">Bank:</span> <span className="font-bold">{firm.bankName}</span>
                             <span className="opacity-70 font-bold">A/c No:</span> <span className="font-bold">{firm.accNumber}</span>
@@ -215,7 +215,7 @@ const InvoiceView: React.FC<Props> = ({ invoice, firm }) => {
                           </div>
                         </div>
                         <div className="flex-1 border-l border-gray-300 pl-4">
-                          <p className="font-black uppercase mb-2 border-b border-black inline-block text-[9px]">Terms & Conditions</p>
+                          <p className="font-black uppercase mb-2 underline underline-offset-2 text-[9px]">Terms & Conditions</p>
                           <ul className="list-disc pl-3 leading-tight opacity-80 text-[9px]">
                             {firm.terms.slice(0, 2).map((t, i) => <li key={i}>{t}</li>)}
                           </ul>

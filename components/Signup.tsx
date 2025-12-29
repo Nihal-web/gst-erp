@@ -12,6 +12,7 @@ const Signup: React.FC = () => {
   const [role] = useState<UserRole>(UserRole.ADMIN);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const { signup } = useAuth();
   const navigate = useNavigate();
 
@@ -56,13 +57,25 @@ const Signup: React.FC = () => {
                 placeholder="owner@yourfirm.com"
               />
             </div>
-            <div className="col-span-2">
+            <div className="col-span-2 relative">
               <label className="text-[10px] font-black uppercase text-slate-500 mb-2 block tracking-widest">Password</label>
-              <input
-                type="password" required value={password} onChange={e => setPassword(e.target.value)}
-                className="w-full bg-slate-50 border-none rounded-2xl py-4 px-6 font-bold text-slate-800"
-                placeholder="••••••••"
-              />
+              <div className="relative">
+                <input
+                  type={showPassword ? "text" : "password"}
+                  required
+                  value={password}
+                  onChange={e => setPassword(e.target.value)}
+                  className="w-full bg-slate-50 border-none rounded-2xl py-4 px-6 font-bold text-slate-800"
+                  placeholder="••••••••"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-blue-600 transition-colors"
+                >
+                  {showPassword ? '👁️' : '🔒'}
+                </button>
+              </div>
             </div>
             <div className="col-span-2">
               <label className="text-[10px] font-black uppercase text-slate-500 mb-2 block tracking-widest">Your Name</label>
