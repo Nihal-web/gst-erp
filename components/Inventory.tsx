@@ -46,7 +46,7 @@ const Inventory: React.FC = () => {
   });
 
   const handleAIHSNFetch = async () => {
-    const searchName = newProduct.productName || newProduct.name;
+    const searchName = newProduct.name || newProduct.productName;
     if (!searchName || searchName.length < 3) {
       showAlert("Enter product name for AI lookup.", "error");
       return;
@@ -327,10 +327,7 @@ const Inventory: React.FC = () => {
                     <input type="text" value={newProduct.name} onChange={e => setNewProduct({ ...newProduct, name: e.target.value })} className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2.5 lg:py-3 px-4 font-bold outline-none text-sm" placeholder="e.g. Portland Cement 50kg Grade 43" />
                   </div>
 
-                  <div className="sm:col-span-2">
-                    <label className="text-[9px] font-black uppercase text-slate-500 mb-1 block">Additional Details (Optional)</label>
-                    <input type="text" value={newProduct.description} onChange={e => setNewProduct({ ...newProduct, description: e.target.value })} className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2.5 lg:py-3 px-4 font-bold outline-none text-sm" placeholder="e.g. Batch #45, Exp 2026" />
-                  </div>
+
 
                   <div className="relative sm:col-span-2">
                     <label className="text-[9px] font-black uppercase text-slate-500 mb-1 block">{newProduct.type === 'SERVICES' ? 'SAC Code' : 'HSN Code'}</label>

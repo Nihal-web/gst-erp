@@ -1,5 +1,4 @@
 import { supabase } from '../supabaseClient';
-import { GoogleGenAI } from '@google/genai';
 
 export interface HSNSuggestion {
   hsnCode: string;
@@ -10,88 +9,6 @@ export interface HSNSuggestion {
 }
 
 const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY || '';
-let genAIInstance: any = null;
-
-const getGenAI = () => {
-  if (!genAIInstance && GEMINI_API_KEY) {
-    try {
-      genAIInstance = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
-    } catch (e) {
-      console.error("Failed to initialize Gemini AI", e);
-    }
-  }
-  return genAIInstance;
-};
-
-// Comprehensive HSN/SAC Database - Works without API
-const HSN_DATABASE: Record<string, HSNSuggestion[]> = {
-  // FOOD & AGRICULTURE (Chapter 01-24)
-  'milk': [
-    { hsnCode: '0401', gstRate: '0%', description: 'Fresh Milk (Unprocessed)', confidence: 95, type: 'GOODS' },
-    { hsnCode: '0402', gstRate: '5%', description: 'Milk Powder / Condensed Milk', confidence: 92, type: 'GOODS' },
-    { hsnCode: '0404', gstRate: '12%', description: 'Flavoured Milk / Buttermilk', confidence: 90, type: 'GOODS' }
-  ],
-  'atta': [
-    { hsnCode: '1101', gstRate: '0%', description: 'Loose/Unbranded Atta', confidence: 98, type: 'GOODS' },
-    { hsnCode: '1101', gstRate: '5%', description: 'Pre-packaged & Labeled Atta (branded)', confidence: 95, type: 'GOODS' }
-  ],
-  'flour': [
-    { hsnCode: '1101', gstRate: '0%', description: 'Wheat Flour (Atta)', confidence: 96, type: 'GOODS' },
-    { hsnCode: '1102', gstRate: '5%', description: 'Maida (Refined Wheat Flour)', confidence: 94, type: 'GOODS' }
-  ],
-  'rice': [
-    { hsnCode: '1006', gstRate: '0%', description: 'Unbranded Rice (loose)', confidence: 96, type: 'GOODS' },
-    { hsnCode: '1006', gstRate: '5%', description: 'Branded/Packaged Rice', confidence: 94, type: 'GOODS' }
-  ],
-  'sugar': [
-    { hsnCode: '1701', gstRate: '5%', description: 'White Sugar', confidence: 97, type: 'GOODS' },
-    { hsnCode: '1701', gstRate: '18%', description: 'Cube Sugar', confidence: 91, type: 'GOODS' }
-  ],
-  'oil': [
-    { hsnCode: '1507', gstRate: '5%', description: 'Soybean Oil', confidence: 95, type: 'GOODS' },
-    { hsnCode: '1508', gstRate: '5%', description: 'Groundnut Oil', confidence: 94, type: 'GOODS' },
-    { hsnCode: '1512', gstRate: '5%', description: 'Sunflower Oil', confidence: 95, type: 'GOODS' }
-  ],
-  'cement': [
-    { hsnCode: '2523', gstRate: '28%', description: 'Portland Cement', confidence: 98, type: 'GOODS' },
-    { hsnCode: '2523', gstRate: '28%', description: 'White Cement', confidence: 95, type: 'GOODS' }
-  ],
-  'steel': [
-    { hsnCode: '7214', gstRate: '18%', description: 'Iron Bars / Steel Rods (TMT)', confidence: 96, type: 'GOODS' },
-    { hsnCode: '7308', gstRate: '18%', description: 'Steel Structures', confidence: 92, type: 'GOODS' }
-  ],
-  'iron': [
-    { hsnCode: '7214', gstRate: '18%', description: 'Iron Bars/Rods', confidence: 95, type: 'GOODS' }
-  ],
-  'mobile': [
-    { hsnCode: '8517', gstRate: '18%', description: 'Mobile Phones', confidence: 98, type: 'GOODS' },
-    { hsnCode: '8517', gstRate: '18%', description: 'Mobile Accessories', confidence: 91, type: 'GOODS' }
-  ],
-  'laptop': [
-    { hsnCode: '8471', gstRate: '18%', description: 'Laptop / Notebook Computer', confidence: 97, type: 'GOODS' }
-  ],
-  'computer': [
-    { hsnCode: '8471', gstRate: '18%', description: 'Desktop Computer', confidence: 96, type: 'GOODS' }
-  ],
-  'transport': [
-    { hsnCode: '996511', gstRate: '5%', description: 'Goods Transport by Road', confidence: 94, type: 'SERVICES' }
-  ],
-  'software': [
-    { hsnCode: '998314', gstRate: '18%', description: 'IT Software Services', confidence: 95, type: 'SERVICES' }
-  ]
-};
-
-const SYNONYMS: Record<string, string[]> = {
-  'mobile': ['phone', 'smartphone', 'cellphone', 'handset'],
-  'laptop': ['notebook', 'laptop computer'],
-  'atta': ['aata', 'wheat flour', 'gehun ka atta'],
-  'flour': ['atta', 'maida', 'besan', 'rawa', 'sooji'],
-  'rice': ['chawal', 'basmati'],
-  'oil': ['tel', 'cooking oil', 'edible oil'],
-  'cement': ['siment', 'sement'],
-  'steel': ['sariya', 'loha', 'iron', 'tmt', 'rod'],
-  'iron': ['loha', 'sariya']
-};
 
 // Cache configuration
 const CACHE_KEY = 'hsn_search_cache_v3';
@@ -146,31 +63,150 @@ async function searchInDatabase(query: string, productType: 'GOODS' | 'SERVICES'
   } catch { return []; }
 }
 
-async function fetchFromGemini(query: string, productType: 'GOODS' | 'SERVICES'): Promise<HSNSuggestion[]> {
-  const ai = getGenAI();
-  if (!ai) return [];
+// Fallback to direct REST API to assume SDK issues
+async function generateContentViaRest(model: string, prompt: string) {
+  if (!GEMINI_API_KEY) throw new Error("Missing Gemini API Key");
+
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`;
+
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      contents: [{
+        parts: [{ text: prompt }]
+      }]
+    })
+  });
+
+  if (!response.ok) {
+    const errText = await response.text();
+    throw new Error(`Gemini API Error ${response.status}: ${errText}`);
+  }
+
+  const data = await response.json();
+  return data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
+}
+
+// Helper to get a prioritized list of ALL working models
+async function getPrioritizedModels(): Promise<string[]> {
+  const defaults = ['gemini-1.5-flash', 'gemini-1.5-pro', 'gemini-2.0-flash-exp', 'gemini-pro'];
+  if (!GEMINI_API_KEY) return defaults;
 
   try {
-    const prompt = `Task: Act as an Indian GST Compliance Expert.
-Entity Identification: Provide the most accurate 4-digit or 6-digit HSN (for Goods) or SAC (for Services) code for: "${query}".
-Context: This is for a GST ERP system in India.
-Constraints: 
-- Type: ${productType}
-- Response Format: Strict JSON array of objects.
-- Maximum suggestions: 2
-Format: [{"hsnCode": "string", "gstRate": "0%/5%/12%/18%/28%", "description": "concise matching desc", "confidence": number, "type": "${productType}"}]`;
+    const listUrl = `https://generativelanguage.googleapis.com/v1beta/models?key=${GEMINI_API_KEY}`;
+    const response = await fetch(listUrl);
+    if (!response.ok) return defaults;
 
-    const result = await ai.models.generateContent({
-      model: 'gemini-1.5-flash',
-      contents: [{ role: 'user', parts: [{ text: prompt }] }]
+    const data = await response.json();
+    const availableModels = (data.models || [])
+      .filter((m: any) => m.supportedGenerationMethods?.includes('generateContent'))
+      .map((m: any) => m.name.replace('models/', ''));
+
+    // Preference order: Fast > Capability > Experimental > Legacy
+    const priorityOrder = ['gemini-1.5-flash', 'gemini-1.5-pro', 'gemini-1.0-pro', 'gemini-pro', 'gemini-2.0-flash-exp'];
+
+    // Sort available models based on our priority list
+    const sorted = availableModels.sort((a: string, b: string) => {
+      const idxA = priorityOrder.indexOf(a);
+      const idxB = priorityOrder.indexOf(b);
+      // If both are in priority list, lower index wins
+      if (idxA !== -1 && idxB !== -1) return idxA - idxB;
+      // If only A is in list, A wins
+      if (idxA !== -1) return -1;
+      // If only B is in list, B wins
+      if (idxB !== -1) return 1;
+      // Otherwise, keep original order (or sort alphabetically if persistent order needed)
+      return 0;
     });
 
-    const text = result.response?.candidates?.[0]?.content?.parts?.[0]?.text || "";
-    const cleanJson = text.replace(/```json|```/gi, '').trim();
-    if (!cleanJson) return [];
+    return sorted.length > 0 ? sorted : defaults;
+  } catch (e) {
+    console.warn("Failed to list models, using defaults.", e);
+    return defaults;
+  }
+}
 
-    const suggestions = JSON.parse(cleanJson);
-    return Array.isArray(suggestions) ? suggestions : [];
+async function fetchFromGemini(query: string, productType: 'GOODS' | 'SERVICES'): Promise<HSNSuggestion[]> {
+  try {
+    const prompt = `System: You are an expert Indian GST Consultant.
+Task: Search the official GST HSN/SAC directory for: "${query}".
+Context: User needs HSN for ${productType}.
+Requirement:
+- Provide the output in this specific JSON format:
+{
+  "product": "Product Name",
+  "hsn_code": "Code",
+  "details": {
+    "description": "Official Description",
+    "chapter": "Chapter Name",
+    "gst_rate": "0%/5%/12%/18%/28%",
+    "effective_date": "YYYY-MM-DD"
+  },
+  "related_codes": []
+}
+- Return ONLY the JSON object. No markdown.`;
+
+    let textC = "";
+    const candidates = await getPrioritizedModels();
+    console.log("Attempting Gemini models in order:", candidates);
+
+    let lastError;
+
+    // Waterfall: Try models one by one until success
+    for (const model of candidates) {
+      try {
+        console.log(`Trying model: ${model}...`);
+        textC = await generateContentViaRest(model, prompt);
+        if (textC) break; // Success!
+      } catch (e: any) {
+        console.warn(`Model ${model} failed:`, e.message || e);
+        lastError = e;
+        // Continue to next model in loop...
+      }
+    }
+
+    if (!textC) {
+      console.error("All Gemini models failed.", lastError);
+      return [];
+    }
+
+    // Improved JSON extraction and Debugging
+    console.log("AI Raw Response:", textC);
+
+    // Attempt to find JSON object if wrapped in text
+    const jsonMatch = textC.match(/\{[\s\S]*\}/);
+    const jsonString = jsonMatch ? jsonMatch[0] : textC.replace(/```json|```/gi, '').trim();
+
+    if (!jsonString) return [];
+
+    let responseData;
+    try {
+      responseData = JSON.parse(jsonString);
+    } catch (e) {
+      console.warn("JSON Parse Failed:", e);
+      return [];
+    }
+
+    // Map the rich response structure to our HSNSuggestion interface
+    if (responseData && (responseData.hsn_code || responseData.hsnCode)) {
+      const rawCode = responseData.hsn_code || responseData.hsnCode || '';
+      const code = rawCode.replace(/[^0-9]/g, '').substring(0, 4); // Only first 4 digits
+      const rate = responseData.details?.gst_rate || responseData.gstRate || '18%';
+      const desc = responseData.details?.description || responseData.product || responseData.description;
+
+      return [{
+        hsnCode: code,
+        gstRate: rate,
+        description: desc,
+        confidence: 95,
+        type: productType
+      }];
+    }
+
+    return Array.isArray(responseData) ? responseData : [];
   } catch (error) {
     console.error('Gemini AI Fetch Error:', error);
     return [];
@@ -187,33 +223,18 @@ export const fetchHSNDetails = async (query: string, productType: 'GOODS' | 'SER
   const cached = getFromCache(normalizedQuery) || getFromCache(cleaned);
   if (cached) return cached;
 
-  // 2. Local Rich Database Check (Exact & Synonym)
-  for (const [key, suggestions] of Object.entries(HSN_DATABASE)) {
-    // Check key
-    if (cleaned === key || cleaned.includes(key)) {
-      saveToCache(normalizedQuery, suggestions);
-      return suggestions;
-    }
-    // Check synonyms
-    const synonyms = SYNONYMS[key] || [];
-    if (synonyms.some(s => cleaned === s || cleaned.includes(s))) {
-      saveToCache(normalizedQuery, suggestions);
-      return suggestions;
-    }
-  }
-
-  // 3. Database Fuzzy Search
-  const dbResults = await searchInDatabase(cleaned, productType);
-  if (dbResults.length > 0 && dbResults[0].confidence > 85) {
-    saveToCache(normalizedQuery, dbResults);
-    return dbResults;
-  }
-
-  // 4. Gemini AI Semantic Search
+  // 2. Gemini AI Semantic Search (Prioritized)
   const aiResults = await fetchFromGemini(normalizedQuery, productType);
   if (aiResults.length > 0) {
     saveToCache(normalizedQuery, aiResults);
     return aiResults;
+  }
+
+  // 3. Database Fuzzy Search (Supabase)
+  const dbResults = await searchInDatabase(cleaned, productType);
+  if (dbResults.length > 0) {
+    saveToCache(normalizedQuery, dbResults);
+    return dbResults;
   }
 
   // Final static fallback

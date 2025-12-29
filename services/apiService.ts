@@ -141,7 +141,11 @@ export const fetchCustomerInvoices = async (customerId: string): Promise<Invoice
         .from('invoices')
         .select(`
             *,
-            customer:customers!invoices_customer_id_fkey ( name, gstin, address, state, state_code )
+            customer:customers!invoices_customer_id_fkey ( name, gstin, address, state, state_code ),
+            items:invoice_items!invoice_items_invoice_id_fkey (
+                product_id, quantity, rate, gst_percent, amount,
+                product:inventory!invoice_items_product_id_fkey ( name, product_name, hsn, sac, unit )
+            )
         `)
         .eq('customer_id', customerId)
         .order('created_at', { ascending: false });
@@ -164,7 +168,17 @@ export const fetchCustomerInvoices = async (customerId: string): Promise<Invoice
                 state: custData?.state,
                 stateCode: custData?.state_code
             },
-            items: []
+            items: (row.items || []).map((item: any) => ({
+                productId: item.product_id,
+                productName: item.product?.product_name || item.product?.name || 'Unknown',
+                hsn: item.product?.hsn || '',
+                sac: item.product?.sac || '',
+                qty: item.quantity,
+                rate: item.rate,
+                unit: item.product?.unit || 'NOS',
+                taxableValue: item.amount,
+                gstPercent: item.gst_percent
+            }))
         } as unknown as Invoice;
     });
 };
@@ -246,7 +260,11 @@ export const fetchInvoices = async (): Promise<Invoice[]> => {
         .from('invoices')
         .select(`
             *,
-            customer:customers!invoices_customer_id_fkey ( name, gstin, address, state, state_code )
+            customer:customers!invoices_customer_id_fkey ( name, gstin, address, state, state_code ),
+            items:invoice_items!invoice_items_invoice_id_fkey (
+                product_id, quantity, rate, gst_percent, amount,
+                product:inventory!invoice_items_product_id_fkey ( name, product_name, hsn, sac, unit )
+            )
         `)
         .eq('tenant_id', user.id)
         .order('created_at', { ascending: false });
@@ -278,7 +296,17 @@ export const fetchInvoices = async (): Promise<Invoice[]> => {
                 state: custData?.state,
                 stateCode: custData?.state_code
             },
-            items: []
+            items: (row.items || []).map((item: any) => ({
+                productId: item.product_id,
+                productName: item.product?.product_name || item.product?.name || 'Unknown',
+                hsn: item.product?.hsn || '',
+                sac: item.product?.sac || '',
+                qty: item.quantity,
+                rate: item.rate,
+                unit: item.product?.unit || 'NOS',
+                taxableValue: item.amount,
+                gstPercent: item.gst_percent
+            }))
         } as unknown as Invoice;
     });
 };

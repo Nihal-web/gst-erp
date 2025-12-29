@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { Invoice, FirmSettings, InvoiceType } from '../types';
 import { formatCurrency, numberToWords } from '../utils/helpers';
@@ -32,6 +31,19 @@ const InvoiceView: React.FC<Props> = ({ invoice, firm }) => {
 
   return (
     <div className="flex flex-col gap-8 print:block print:gap-0">
+      <style>{`
+        .bg-black { background-color: #000000 !important; }
+        .text-black { color: #000000 !important; }
+        .bg-white { background-color: #ffffff !important; }
+        .text-white { color: #ffffff !important; }
+        .border-black { border-color: #000000 !important; }
+        .border-white { border-color: #ffffff !important; }
+        .bg-gray-100 { background-color: #f3f4f6 !important; }
+        .border-gray-300 { border-color: #d1d5db !important; }
+        .bg-gray-50 { background-color: #f9fafb !important; }
+        .text-gray-500 { color: #6b7280 !important; }
+        .text-gray-700 { color: #374151 !important; }
+      `}</style>
       {pages.map((itemChunk, pageIdx) => {
         const isLastPage = pageIdx === pages.length - 1;
 
@@ -48,12 +60,12 @@ const InvoiceView: React.FC<Props> = ({ invoice, firm }) => {
             className="bg-white text-black font-sans leading-tight border border-black flex flex-col mx-auto print:border-none print:shadow-none print:break-after-page mb-8 print:mb-0 box-border overflow-visible"
             style={{
               width: '210mm',
-              minHeight: '297mm',
-              padding: '12mm',
+              minHeight: '290mm',
+              padding: '6mm',
             }}
           >
             {/* Header Section */}
-            <div className="flex justify-between items-start border-b-4 border-black pb-4 mb-4">
+            <div className="flex justify-between items-start border-b-4 border-black pb-3 mb-3">
               <div className="flex-1">
                 <h1 className="text-3xl font-black text-black uppercase leading-none mb-1">{firm.name}</h1>
                 <p className="text-[10px] font-bold text-black uppercase tracking-widest mb-3 opacity-70">{firm.tagline}</p>
@@ -73,18 +85,20 @@ const InvoiceView: React.FC<Props> = ({ invoice, firm }) => {
                   </p>
                 )}
                 {invoice.isReverseCharge && (
-                  <p className="text-[11px] font-black uppercase bg-slate-200 px-3 py-1 border border-black">REVERSE CHARGE: YES</p>
+                  <p className="text-[11px] font-black uppercase px-3 py-1 border border-black" style={{ backgroundColor: '#e2e8f0' }}>REVERSE CHARGE: YES</p>
                 )}
                 <p className="text-[10px] font-bold mt-2">Page {pageIdx + 1} of {pages.length}</p>
               </div>
             </div>
 
             {/* Details Bar */}
-            <div className="grid grid-cols-2 gap-px bg-black border border-black mb-6">
+            <div className="grid grid-cols-2 gap-px bg-black border border-black mb-4">
               <div className="bg-white p-4">
-                <p className="text-[10px] font-black text-black uppercase mb-2 opacity-60">Consignee (Billed To)</p>
-                <h2 className="text-sm font-black text-black uppercase mb-2 border-b-2 border-black inline-block">{invoice.customer.name}</h2>
-                <div className="text-[11px] space-y-1 text-black leading-snug">
+                <p className="text-[10px] font-black text-black uppercase mb-0.5 opacity-60">Consignee (Billed To)</p>
+                <div className="mb-0.5">
+                  <h2 className="text-sm font-black text-black uppercase border-b-2 border-black inline-block leading-none pb-0.5">{invoice.customer.name}</h2>
+                </div>
+                <div className="text-[11px] space-y-0.5 text-black leading-tight">
                   <p className="font-bold">{invoice.customer.address}</p>
                   {invoice.customer.country && <p><strong>Country:</strong> {invoice.customer.country}</p>}
                   <p><strong>GSTIN:</strong> <span className="font-black">{invoice.customer.gstin}</span></p>
@@ -152,7 +166,7 @@ const InvoiceView: React.FC<Props> = ({ invoice, firm }) => {
                     </tr>
                   )}
                   {!isLastPage && (
-                    <tr className="bg-slate-100 font-black text-[10px] border-t-2 border-black">
+                    <tr className="font-black text-[10px] border-t-2 border-black" style={{ backgroundColor: '#f1f5f9' }}>
                       <td colSpan={5} className="p-2 text-right uppercase italic">Totals Carried Forward to Next Page &raquo;&raquo;</td>
                       <td className="p-2 text-right">₹{formatCurrency(itemChunk.reduce((s, it) => s + it.taxableValue, 0))}</td>
                     </tr>
@@ -192,28 +206,69 @@ const InvoiceView: React.FC<Props> = ({ invoice, firm }) => {
                     </div>
                   </div>
 
-                  <div className="w-72 bg-slate-50">
+                  <div className="w-72" style={{ backgroundColor: '#f8fafc' }}>
                     <div className="grid grid-cols-2 border-b-2 border-black">
                       <span className="p-3 text-[10px] font-black uppercase text-black border-r-2 border-black">Sub Total</span>
                       <span className="p-3 text-[12px] font-black text-right text-black">{formatCurrency(invoice.totalTaxable)}</span>
                     </div>
-                    {isInterState ? (
-                      <div className="grid grid-cols-2 border-b-2 border-black">
-                        <span className="p-3 text-[10px] font-black uppercase text-black border-r-2 border-black">IGST Sum</span>
-                        <span className="p-3 text-[12px] font-black text-right text-black">{formatCurrency(invoice.igst || 0)}</span>
-                      </div>
-                    ) : (
-                      <>
-                        <div className="grid grid-cols-2 border-b border-black">
-                          <span className="p-3 text-[10px] font-black uppercase text-black border-r-2 border-black">CGST</span>
-                          <span className="p-3 text-[12px] font-black text-right text-black">{formatCurrency(invoice.cgst || 0)}</span>
+                    {/* HSN/SAC Summary Table - Replaces Simple Tax Summary */}
+                    {/* HSN/SAC Summary Table - Detailed Split */}
+                    <div className="border-b-2 border-black">
+                      {isInterState ? (
+                        // IGST Layout
+                        <div className="grid grid-cols-4 bg-black text-white text-[8px] font-black uppercase tracking-wider">
+                          <div className="p-1 border-r border-white text-center">HSN/SAC</div>
+                          <div className="p-1 border-r border-white text-right">Taxable Val</div>
+                          <div className="p-1 border-r border-white text-right">IGST Rate</div>
+                          <div className="p-1 text-right">IGST Amt</div>
                         </div>
-                        <div className="grid grid-cols-2 border-b-2 border-black">
-                          <span className="p-3 text-[10px] font-black uppercase text-black border-r-2 border-black">SGST</span>
-                          <span className="p-3 text-[12px] font-black text-right text-black">{formatCurrency(invoice.sgst || 0)}</span>
+                      ) : (
+                        // CGST + SGST Layout
+                        <div className="grid grid-cols-6 bg-black text-white text-[8px] font-black uppercase tracking-wider">
+                          <div className="p-1 border-r border-white text-center">HSN/SAC</div>
+                          <div className="p-1 border-r border-white text-right col-span-1">Taxable</div>
+                          <div className="p-1 border-r border-white text-right">CGST %</div>
+                          <div className="p-1 border-r border-white text-right">CGST Amt</div>
+                          <div className="p-1 border-r border-white text-right">SGST %</div>
+                          <div className="p-1 text-right">SGST Amt</div>
                         </div>
-                      </>
-                    )}
+                      )}
+
+                      {Object.values(invoice.items.reduce((acc: Record<string, { hsn: string; taxable: number; tax: number; rate: number }>, item) => {
+                        const hsn = item.hsn || item.sac || 'NA';
+                        if (!acc[hsn]) acc[hsn] = { hsn, taxable: 0, tax: 0, rate: item.gstPercent };
+                        acc[hsn].taxable += item.taxableValue;
+                        acc[hsn].tax += (item.taxableValue * (item.gstPercent / 100));
+                        return acc;
+                      }, {})).map((row: { hsn: string; taxable: number; tax: number; rate: number }) => (
+                        <div key={row.hsn} className={`grid ${isInterState ? 'grid-cols-4' : 'grid-cols-6'} text-[9px] font-bold border-b border-gray-300 last:border-0`}>
+                          {isInterState ? (
+                            <>
+                              <div className="p-1 border-r border-black text-center">{row.hsn}</div>
+                              <div className="p-1 border-r border-black text-right">{formatCurrency(row.taxable)}</div>
+                              <div className="p-1 border-r border-black text-right">{row.rate}%</div>
+                              <div className="p-1 text-right">{formatCurrency(row.tax)}</div>
+                            </>
+                          ) : (
+                            <>
+                              <div className="p-1 border-r border-black text-center">{row.hsn}</div>
+                              <div className="p-1 border-r border-black text-right">{formatCurrency(row.taxable)}</div>
+                              <div className="p-1 border-r border-black text-right">{row.rate / 2}%</div>
+                              <div className="p-1 border-r border-black text-right">{formatCurrency(row.tax / 2)}</div>
+                              <div className="p-1 border-r border-black text-right">{row.rate / 2}%</div>
+                              <div className="p-1 text-right">{formatCurrency(row.tax / 2)}</div>
+                            </>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="grid grid-cols-2 border-b-2 border-black bg-gray-100">
+                      <span className="p-2 text-[10px] font-black uppercase text-black border-r-2 border-black">Total Tax</span>
+                      <span className="p-2 text-[12px] font-black text-right text-black">
+                        ₹{formatCurrency((invoice.igst || 0) + (invoice.cgst || 0) + (invoice.sgst || 0))}
+                      </span>
+                    </div>
                     <div className="grid grid-cols-2 bg-black text-white">
                       <span className="p-4 text-[12px] font-black uppercase tracking-widest border-r-2 border-white">Grand Total</span>
                       <span className="p-4 text-xl font-black text-right">₹{formatCurrency(invoice.totalAmount)}</span>

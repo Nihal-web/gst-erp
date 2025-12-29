@@ -24,6 +24,17 @@ const BillingTerminal: React.FC = () => {
   const [shippingBill, setShippingBill] = useState('');
   const [shippingDate, setShippingDate] = useState('');
 
+  // Invoice Customization State
+  const [showEditDetails, setShowEditDetails] = useState(false);
+  const [customDeclaration, setCustomDeclaration] = useState(firm.declaration);
+  const [customTerms, setCustomTerms] = useState(firm.terms.join('\n'));
+
+  // Sync state with firm details when they load
+  React.useEffect(() => {
+    setCustomDeclaration(firm.declaration);
+    setCustomTerms(firm.terms.join('\n'));
+  }, [firm]);
+
 
   const addItem = () => {
     setItems([...items, {
@@ -225,14 +236,43 @@ const BillingTerminal: React.FC = () => {
       // Wait for QR codes and fonts to load
       await new Promise(resolve => setTimeout(resolve, 1500));
 
-      const canvas = await html2canvas(invoiceElement, {
+      // 1. Create a clean, isolated container for capture
+      const tempContainer = document.createElement('div');
+      tempContainer.style.position = 'fixed';
+      tempContainer.style.top = '0';
+      tempContainer.style.left = '0';
+      tempContainer.style.width = '210mm'; // Full A4 Width
+      tempContainer.style.height = 'auto';
+      tempContainer.style.zIndex = '-9999';
+      tempContainer.style.background = '#ffffff';
+      tempContainer.style.overflow = 'visible';
+      document.body.appendChild(tempContainer);
+
+      // 2. Clone the invoice into this container
+      const clonedInvoice = invoiceElement.cloneNode(true) as HTMLElement;
+
+      // 3. Reset preview styles on the clone
+      clonedInvoice.className = 'invoice-container bg-white';
+      clonedInvoice.style.width = '210mm'; // Full A4 Width
+      clonedInvoice.style.minHeight = '297mm'; // Full A4 Height
+      clonedInvoice.style.margin = '0';
+      clonedInvoice.style.transform = 'none';
+      clonedInvoice.style.boxShadow = 'none';
+
+      tempContainer.appendChild(clonedInvoice);
+
+      // 4. Capture using html2canvas on the CLEAN container
+      const canvas = await html2canvas(tempContainer, {
         scale: 2,
         useCORS: true,
         logging: false,
         backgroundColor: '#ffffff',
-        windowWidth: invoiceElement.scrollWidth,
-        windowHeight: invoiceElement.scrollHeight
+        width: 794, // ~210mm in px
+        windowWidth: 1200,
       });
+
+      // 5. Cleanup
+      document.body.removeChild(tempContainer);
 
       const imgData = canvas.toDataURL('image/png', 1.0);
       const pdf = new jsPDF({
@@ -242,29 +282,34 @@ const BillingTerminal: React.FC = () => {
         compress: true
       });
 
-      const imgWidth = 210;
+      const imgWidth = 210; // Full A4 Width
       const imgHeight = (canvas.height * imgWidth) / canvas.width;
+      const pageHeight = 297; // Full A4 Height
 
-      // Add image to PDF. If it's longer than one A4 (297mm), jspdf will overflow
-      // However, we can fit it to height if user prefers single page ALWAYS
-      // Let's implement smart fit: if slightly over, fit it; if significantly over, leave as is.
-      const pageHeight = 297;
-      const finalHeight = imgHeight > pageHeight ? imgHeight : pageHeight;
-
-      if (imgHeight > pageHeight) {
-        // Option A: Multi-page if very long
-        // Option B: Scale down to fit one page if user specifically asked for "one page"
-        // Since user asked for "one page", we force scaling to fit A4 width and natural height
-        // To truly get "one page" in jspdf if it's long, we can define a custom format
+      if (imgHeight > pageHeight + 20) {
+        // Significantly longer -> Custom long PDF
         const customPdf = new jsPDF({
           orientation: 'portrait',
           unit: 'mm',
-          format: [210, imgHeight + 20] // Width A4, Height dynamic
+          format: [210, imgHeight + 20]
         });
-        customPdf.addImage(imgData, 'PNG', 0, 0, 210, imgHeight);
+        customPdf.addImage(imgData, 'PNG', 0, 0, imgWidth, imgHeight);
         customPdf.save(`${invoiceData?.invoiceNo || 'invoice'}.pdf`);
       } else {
-        pdf.addImage(imgData, 'PNG', 0, 0, imgWidth, imgHeight);
+        // Fit within standard A4
+        // If it's slightly larger than A4, scale it down to fit exactly 297mm to prevent cutting
+        let finalHeight = imgHeight;
+        let finalWidth = imgWidth;
+
+        if (imgHeight > pageHeight) {
+          finalHeight = pageHeight;
+          finalWidth = (pageHeight * canvas.width) / canvas.height;
+        }
+
+        // Center horizontally if scaled down
+        const xOffset = (210 - finalWidth) / 2;
+
+        pdf.addImage(imgData, 'PNG', xOffset, 0, finalWidth, finalHeight);
         pdf.save(`${invoiceData?.invoiceNo || 'invoice'}.pdf`);
       }
 
@@ -277,7 +322,16 @@ const BillingTerminal: React.FC = () => {
     }
   };
 
+
+
   if (showInvoice && invoiceData) {
+    // Merge custom details into the firm object for the view
+    const displayFirm = {
+      ...firm,
+      declaration: customDeclaration,
+      terms: customTerms.split('\n').filter(t => t.trim() !== '')
+    };
+
     return (
       <div className="space-y-4 lg:space-y-6 print:space-y-0 print:m-0">
         <div className="flex flex-col sm:flex-row justify-between items-center no-print bg-white p-4 lg:p-6 rounded-3xl border border-slate-100 shadow-sm gap-4">
@@ -289,19 +343,59 @@ const BillingTerminal: React.FC = () => {
           </button>
           <div className="w-full sm:w-auto flex gap-4">
             <button
+              onClick={() => setShowEditDetails(true)}
+              className="w-full sm:w-auto bg-slate-100 text-slate-700 px-6 py-3 rounded-2xl hover:bg-slate-200 font-bold shadow-sm transition-all flex items-center justify-center gap-2"
+            >
+              Edit Details ✏️
+            </button>
+            <button
               onClick={handlePrint}
               disabled={isPrinting}
               className={`w-full sm:w-auto bg-blue-600 text-white px-8 py-3 rounded-2xl hover:bg-blue-700 font-black shadow-xl shadow-blue-200 transition-all active:scale-95 flex items-center justify-center gap-2 ${isPrinting ? 'opacity-50' : ''}`}
             >
-              {isPrinting ? '⏳ Processing' : '🖨️ Download PDF'}
+              {isPrinting ? 'Generating...' : 'Download PDF 🖨️'}
             </button>
           </div>
         </div>
-        <div className="w-full overflow-x-auto no-scrollbar py-4 lg:py-0 flex justify-center">
-          <div className="invoice-container origin-top scale-[0.35] sm:scale-[0.55] md:scale-[0.75] lg:scale-100 min-w-max rounded-xl shadow-2xl bg-white border border-slate-200 print:shadow-none print:border-none print:rounded-none print:scale-100 print:origin-top-left print:block">
-            <InvoiceView invoice={invoiceData} firm={firm} />
+
+        {/* PDF Preview Area - Styled like a document viewer */}
+        <div className="flex justify-center bg-slate-800/90 rounded-3xl p-4 lg:p-10 overflow-auto max-h-[80vh] border border-slate-700 shadow-inner scrollbar-thin scrollbar-thumb-slate-600 scrollbar-track-transparent backdrop-blur-sm">
+          <div className="relative shadow-2xl shadow-black/50 print:shadow-none transition-transform duration-300 ease-out origin-top scale-[0.4] sm:scale-[0.55] md:scale-[0.7] lg:scale-90 xl:scale-100">
+            <div className="invoice-container bg-white" style={{ minWidth: '200mm' }}>
+              <InvoiceView invoice={invoiceData} firm={displayFirm} />
+            </div>
           </div>
         </div>
+
+        {/* Edit Details Modal */}
+        {showEditDetails && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+            <div className="bg-white w-full max-w-lg rounded-3xl p-8 animate-in zoom-in-95 shadow-2xl">
+              <h3 className="text-xl font-black text-slate-800 mb-6">Edit Invoice Details</h3>
+              <div className="space-y-4">
+                <div>
+                  <label className="text-[10px] font-black uppercase text-slate-500 block mb-1">Declaration</label>
+                  <textarea
+                    value={customDeclaration}
+                    onChange={e => setCustomDeclaration(e.target.value)}
+                    className="w-full border border-slate-200 rounded-xl p-3 text-xs font-bold h-20 outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] font-black uppercase text-slate-500 block mb-1">Terms & Conditions (One per line)</label>
+                  <textarea
+                    value={customTerms}
+                    onChange={e => setCustomTerms(e.target.value)}
+                    className="w-full border border-slate-200 rounded-xl p-3 text-xs font-bold h-32 outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div className="flex justify-end gap-3 pt-2">
+                  <button onClick={() => setShowEditDetails(false)} className="px-6 py-2.5 bg-blue-600 text-white rounded-xl font-black text-xs">Done</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     );
   }
@@ -440,8 +534,8 @@ const BillingTerminal: React.FC = () => {
             )}
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 lg:gap-8 no-print">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 lg:gap-8 no-print">
+          <div className="w-full no-print">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 lg:gap-8">
               <div className="md:col-span-2 bg-white p-6 lg:p-8 rounded-3xl lg:rounded-[2.5rem] shadow-sm border border-slate-200">
                 <div className="flex items-center justify-between mb-4">
                   <h3 className="text-lg font-black text-slate-800 tracking-tight">Select Customer</h3>
