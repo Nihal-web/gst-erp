@@ -25,21 +25,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    // Check active session
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    // Listen for auth state changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (session?.user) {
-        fetchProfile(session.user.id, session.user.email!);
-      } else {
-        setIsLoading(false);
-      }
-    });
-
-    // Listen for changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (session?.user) {
-        fetchProfile(session.user.id, session.user.email!);
-      } else {
+        setIsLoading(true);
+        await fetchProfile(session.user.id, session.user.email!);
+      } else if (event === 'SIGNED_OUT') {
         setUser(null);
+        setOriginalRole(null);
+        setIsLoading(false);
+      } else {
+        // Handle INITIAL_SESSION with no user
         setIsLoading(false);
       }
     });
@@ -49,7 +45,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const fetchProfile = async (userId: string, email: string) => {
     try {
-      // Get session metadata first
+      // Get auth user metadata
       const { data: { user: authUser } } = await supabase.auth.getUser();
       const meta = authUser?.user_metadata || {};
 
@@ -57,25 +53,31 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         .from('users')
         .select('*')
         .eq('id', userId)
-        .single();
+        .maybeSingle();
 
       if (data) {
         // Update user record if metadata has more info (sync)
         if (meta.name && (data.name === 'User' || !data.name)) {
-          await supabase.from('users').update({
+          const { data: updated } = await supabase.from('users').update({
             name: meta.name,
             shop_name: meta.shop_name || data.shop_name
-          }).eq('id', userId);
+          }).eq('id', userId).select().single();
+
+          if (updated) {
+            setUser({ ...updated, email, name: meta.name || updated.name, shopName: meta.shop_name || updated.shop_name });
+            setOriginalRole(updated.role as UserRole);
+            return;
+          }
         }
         setUser({ ...data, email, name: meta.name || data.name, shopName: meta.shop_name || data.shop_name });
         setOriginalRole(data.role as UserRole);
       } else {
-        // Check for legacy user
+        // Check for legacy user by email
         const { data: legacyUser } = await supabase
           .from('users')
           .select('*')
           .eq('email', email)
-          .single();
+          .maybeSingle();
 
         if (legacyUser) {
           const { data: migrated } = await supabase
@@ -92,7 +94,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           }
         }
 
-        // New profile
+        // Create new profile if it doesn't exist
         const newUser = {
           id: userId,
           email,
@@ -103,9 +105,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           plan: 'pro'
         };
 
-        await supabase.from('users').insert([newUser]);
-        setUser({ ...newUser, shopName: newUser.shop_name } as unknown as User);
-        setOriginalRole(newUser.role as UserRole);
+        const { data: created, error: insErr } = await supabase
+          .from('users')
+          .upsert([newUser], { onConflict: 'id' })
+          .select()
+          .single();
+
+        if (created) {
+          setUser({ ...created, email, name: created.name, shopName: created.shop_name } as any);
+          setOriginalRole(created.role as UserRole);
+        } else {
+          console.error("Failed to create/fetch profile", insErr);
+        }
       }
     } catch (e) {
       console.error("Profile fetch error", e);
@@ -115,8 +126,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const login = async (email: string, password: string) => {
+    setIsLoading(true);
     const { error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) throw new Error(error.message);
+    if (error) {
+      setIsLoading(false);
+      throw new Error(error.message);
+    }
+    // Note: navigate('/') will still trigger in Login.tsx, but now 
+    // ProtectedRoute will see isLoading=true while Profile is fetching.
   };
 
   const signup = async (email: string, password: string, name: string, shopName: string, role: UserRole) => {

@@ -3,6 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { useApp } from '../AppContext';
 import { FirmSettings } from '../types';
 import { useAuth } from '../AuthContext';
+import { GST_STATES } from '../constants';
 
 const Settings: React.FC = () => {
   const { firm, setFirm, showAlert, invoices, updateUserProfile, isLoaded } = useApp();
@@ -21,6 +22,12 @@ const Settings: React.FC = () => {
     }
   }, [firm, isLoaded]);
 
+  useEffect(() => {
+    if (user) {
+      setProfileData({ name: user.name, shopName: user.shopName });
+    }
+  }, [user]);
+
   if (!isLoaded) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4">
@@ -29,12 +36,6 @@ const Settings: React.FC = () => {
       </div>
     );
   }
-
-  useEffect(() => {
-    if (user) {
-      setProfileData({ name: user.name, shopName: user.shopName });
-    }
-  }, [user]);
 
   const handleChange = (field: keyof FirmSettings, value: any) => {
     setFormData(prev => ({ ...prev, [field]: value }));
@@ -196,12 +197,24 @@ const Settings: React.FC = () => {
               </div>
               <div>
                 <label className="text-[9px] font-black uppercase text-slate-500 tracking-widest block mb-2">Primary State</label>
-                <input
-                  type="text"
+                <select
                   value={formData.state}
-                  onChange={(e) => handleChange('state', e.target.value)}
-                  className="w-full bg-white border border-slate-200 rounded-2xl py-3 px-4 font-bold text-slate-800 text-sm"
-                />
+                  onChange={(e) => {
+                    const selectedState = e.target.value;
+                    const stateObj = GST_STATES.find(s => s.name === selectedState);
+                    setFormData(prev => ({
+                      ...prev,
+                      state: selectedState,
+                      stateCode: stateObj ? stateObj.code : prev.stateCode
+                    }));
+                  }}
+                  className="w-full bg-white border border-slate-200 rounded-2xl py-3 px-4 font-bold text-slate-800 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">Select State</option>
+                  {GST_STATES.map(s => (
+                    <option key={s.code} value={s.name}>{s.name}</option>
+                  ))}
+                </select>
               </div>
               <div>
                 <label className="text-[9px] font-black uppercase text-slate-500 tracking-widest block mb-2">State Code</label>
@@ -210,6 +223,7 @@ const Settings: React.FC = () => {
                   value={formData.stateCode}
                   onChange={(e) => handleChange('stateCode', e.target.value)}
                   className="w-full bg-white border border-slate-200 rounded-2xl py-3 px-4 font-bold text-slate-800 text-sm"
+                  readOnly
                 />
               </div>
               <div className="sm:col-span-2">

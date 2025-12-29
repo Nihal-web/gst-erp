@@ -127,7 +127,7 @@ const Inventory: React.FC = () => {
       <div className="flex flex-col sm:flex-row sm:justify-between sm:items-end gap-6">
         <div>
           <h2 className="text-2xl lg:text-3xl font-black text-slate-800 tracking-tight">Inventory Control</h2>
-          <p className="text-slate-400 text-sm font-medium tracking-tight">Warehouse status for Gujarat Freight Tools.</p>
+          <p className="text-slate-400 text-sm font-medium tracking-tight">Manage Your Warehouses and Assets </p>
         </div>
         <div className="flex flex-col sm:flex-row gap-4 w-full sm:w-auto">
           <button onClick={() => setShowWarehouseModal(true)} className="px-4 py-3 bg-indigo-50 text-indigo-600 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-indigo-100 transition-all">
