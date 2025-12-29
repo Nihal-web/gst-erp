@@ -63,9 +63,11 @@ Build: npm install && npm run build
 Publish: dist
 ```
 
-**Environment Variable:**
+**Environment Variables:**
 ```
-VITE_API_URL = https://gst-erp-backend.onrender.com/api
+VITE_API_URL            = https://gst-erp-backend.onrender.com/api
+VITE_SUPABASE_URL       = https://xxxxx.supabase.co
+VITE_SUPABASE_ANON_KEY  = eyJ...
 ```
 
 ✅ Frontend is live!

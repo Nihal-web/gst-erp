@@ -119,10 +119,12 @@ Build Command:      npm install && npm run build
 Publish Directory:  dist
 ```
 
-### 3. Add Build Environment Variable
+### 3. Add Build Environment Variables
 Add in **Environment** section:
 ```
-VITE_API_URL = https://gst-erp-backend.onrender.com/api
+VITE_API_URL           = https://gst-erp-backend.onrender.com/api
+VITE_SUPABASE_URL      = https://xxxxx.supabase.co
+VITE_SUPABASE_ANON_KEY = eyJxxx...
 ```
 
 ### 4. Deploy
