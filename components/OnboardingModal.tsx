@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { useApp } from '../AppContext';
-import { FirmSettings } from '../types';
+import { useAuth } from '../AuthContext';
+import { FirmSettings, UserRole } from '../types';
 import { GST_STATES } from '../constants';
 
 const OnboardingModal: React.FC = () => {
+    const { user } = useAuth();
     const { firm, setFirm, isLoaded } = useApp();
     const [isOpen, setIsOpen] = useState(false);
     const [formData, setFormData] = useState<FirmSettings>(firm);
@@ -13,16 +15,15 @@ const OnboardingModal: React.FC = () => {
         if (firm) {
             setFormData(firm);
             // Check if critical details are missing
-            // We check for name, address, phone. 
-            // Note: firm.name might be set to shopName from Auth user on init, so we check address/phone/gstin mostly 
-            if (isLoaded) {
+            // Platform Admin doesn't need this check
+            if (isLoaded && user?.role !== UserRole.PLATFORM_ADMIN) {
                 const isMissingDetails = !firm.address || !firm.phone || !firm.gstin;
                 if (isMissingDetails) {
                     setIsOpen(true);
                 }
             }
         }
-    }, [firm, isLoaded]);
+    }, [firm, isLoaded, user]);
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
         setFormData({ ...formData, [e.target.name]: e.target.value });
