@@ -15,7 +15,12 @@ export const DEFAULT_FIRM_SETTINGS: FirmSettings = {
   accNumber: '',
   ifsc: '',
   upiId: '',
-  terms: [],
+  terms: [
+    "E & O.E.",
+    "Subject to Uttar Pradesh Jurisdiction.",
+    "Our Responsibility Ceases as soon as goods leave our Premises.",
+    "Goods once sold will not be taken back."
+  ],
   state: '',
   stateCode: '',
   declaration: ''

@@ -3,6 +3,7 @@ import React, { useState } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../AuthContext';
 import { UserRole } from '../types';
+import OnboardingModal from './OnboardingModal';
 
 const Logo = () => (
   <svg width="40" height="40" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg" className="drop-shadow-lg lg:w-[48px] lg:h-[48px]">
@@ -165,6 +166,8 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
           </div>
         </main>
       </div>
+
+      <OnboardingModal />
     </div>
   );
 };

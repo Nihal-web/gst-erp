@@ -231,50 +231,70 @@ const BillingTerminal: React.FC = () => {
     }
 
     try {
-      showAlert("Preparing high-quality document...", "info");
+      showAlert("Preparing document...", "info");
 
-      // Wait for QR codes and fonts to load
-      await new Promise(resolve => setTimeout(resolve, 1500));
+      // Wait for resources
+      await new Promise(resolve => setTimeout(resolve, 500));
 
-      // 1. Create a clean, isolated container for capture
+      // 1. Create a clean, isolated container with FIXED PIXEL WIDTH
+      // 210mm @ 96 DPI ~= 793.7px. We use 794px.
+      // 1. Create a clean, isolated container with FIXED PIXEL WIDTH
+      // 210mm @ 96 DPI ~= 793.7px. We use 794px.
+      const A4_PIXEL_WIDTH = 794;
+      const A4_PIXEL_HEIGHT = 1123;
+
       const tempContainer = document.createElement('div');
       tempContainer.style.position = 'fixed';
       tempContainer.style.top = '0';
       tempContainer.style.left = '0';
-      tempContainer.style.width = '210mm'; // Full A4 Width
-      tempContainer.style.height = 'auto';
+      // Force the environment to match A4 width exactly
+      tempContainer.style.width = `${A4_PIXEL_WIDTH}px`;
+      tempContainer.style.minHeight = `${A4_PIXEL_HEIGHT}px`;
       tempContainer.style.zIndex = '-9999';
       tempContainer.style.background = '#ffffff';
-      tempContainer.style.overflow = 'visible';
       document.body.appendChild(tempContainer);
 
-      // 2. Clone the invoice into this container
+      // --- CRITICAL FIX: Clone the styles from InvoiceView ---
+      // The <style> tag is a sibling of the invoice-container in the DOM
+      if (invoiceElement.parentElement) {
+        const styleTag = invoiceElement.parentElement.querySelector('style');
+        if (styleTag) {
+          tempContainer.appendChild(styleTag.cloneNode(true));
+        }
+      }
+
+      // 2. Clone invoice
       const clonedInvoice = invoiceElement.cloneNode(true) as HTMLElement;
 
-      // 3. Reset preview styles on the clone
-      clonedInvoice.className = 'invoice-container bg-white';
-      clonedInvoice.style.width = '210mm'; // Full A4 Width
-      clonedInvoice.style.minHeight = '297mm'; // Full A4 Height
+      // 3. Normalize styles for capture
+      clonedInvoice.className = 'invoice-container'; // Clean class
+      // Important: Overwrite width to fill the container 100%
+      clonedInvoice.style.width = '100%';
+      clonedInvoice.style.minHeight = `${A4_PIXEL_HEIGHT}px`;
+      clonedInvoice.style.padding = '35px'; // Approx 10mm
       clonedInvoice.style.margin = '0';
-      clonedInvoice.style.transform = 'none';
+      clonedInvoice.style.border = 'none';
       clonedInvoice.style.boxShadow = 'none';
+      clonedInvoice.style.transform = 'none';
+      clonedInvoice.style.boxSizing = 'border-box';
 
       tempContainer.appendChild(clonedInvoice);
 
-      // 4. Capture using html2canvas on the CLEAN container
+      // 4. Capture
       const canvas = await html2canvas(tempContainer, {
-        scale: 3, // Higher DPI for crisper text
+        scale: 2,
         useCORS: true,
         logging: false,
         backgroundColor: '#ffffff',
-        width: 794, // 210mm @ 96 DPI
-        windowWidth: 794, // Match width to prevent responsive resizing
+        width: A4_PIXEL_WIDTH,
+        windowWidth: A4_PIXEL_WIDTH, // Force window context to be A4 width
       });
 
       // 5. Cleanup
       document.body.removeChild(tempContainer);
 
-      const imgData = canvas.toDataURL('image/png', 1.0);
+      // 6. Generate PDF
+      const imgData = canvas.toDataURL('image/jpeg', 0.98);
       const pdf = new jsPDF({
         orientation: 'portrait',
         unit: 'mm',
@@ -282,41 +302,42 @@ const BillingTerminal: React.FC = () => {
         compress: true
       });
 
-      const imgWidth = 210; // Full A4 Width
-      const imgHeight = (canvas.height * imgWidth) / canvas.width;
-      const pageHeight = 297; // Full A4 Height
+      const pdfWidth = 210;
+      const pdfHeight = 297;
 
-      if (imgHeight > pageHeight + 20) {
-        // Significantly longer -> Custom long PDF
-        const customPdf = new jsPDF({
-          orientation: 'portrait',
-          unit: 'mm',
-          format: [210, imgHeight + 20]
-        });
-        customPdf.addImage(imgData, 'PNG', 0, 0, imgWidth, imgHeight);
-        customPdf.save(`${invoiceData?.invoiceNo || 'invoice'}.pdf`);
+      // Calculate logic height based on A4 width
+      const imgProps = pdf.getImageProperties(imgData);
+      const contentHeight = (imgProps.height * pdfWidth) / imgProps.width;
+
+      // If content is roughly A4 (within 10mm tolerance), FORCE STRETCH to fill page nicely
+      // This eliminates the "back canvas bigger" white borders if aspect ratio is slightly off.
+      if (Math.abs(contentHeight - pdfHeight) < 20) {
+        pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight);
       } else {
-        // Fit within standard A4
-        // If it's slightly larger than A4, scale it down to fit exactly 297mm to prevent cutting
-        let finalHeight = imgHeight;
-        let finalWidth = imgWidth;
-
-        if (imgHeight > pageHeight) {
-          finalHeight = pageHeight;
-          finalWidth = (pageHeight * canvas.width) / canvas.height;
+        // Long page logic
+        if (contentHeight > pdfHeight) {
+          const customPdf = new jsPDF({
+            orientation: 'portrait',
+            unit: 'mm',
+            format: [pdfWidth, contentHeight]
+          });
+          customPdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, contentHeight);
+          customPdf.save(`${invoiceData?.invoiceNo || 'invoice'}.pdf`);
+          setIsPrinting(false);
+          showAlert("PDF downloaded.", "success");
+          return;
+        } else {
+          // Shorter than A4? Place at top.
+          pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, contentHeight);
         }
-
-        // Center horizontally if scaled down
-        const xOffset = (210 - finalWidth) / 2;
-
-        pdf.addImage(imgData, 'PNG', xOffset, 0, finalWidth, finalHeight);
-        pdf.save(`${invoiceData?.invoiceNo || 'invoice'}.pdf`);
       }
 
-      showAlert("Success! PDF downloaded.", "success");
+      pdf.save(`${invoiceData?.invoiceNo || 'invoice'}.pdf`);
+      showAlert("PDF downloaded successfully.", "success");
+
     } catch (error) {
       console.error("PDF Generation Error:", error);
-      showAlert("PDF generation failed. Check your connection.", "error");
+      showAlert("PDF error. Try using the browser print option (Ctrl+P).", "error");
     } finally {
       setIsPrinting(false);
     }
@@ -361,7 +382,7 @@ const BillingTerminal: React.FC = () => {
         {/* PDF Preview Area - Styled like a document viewer */}
         <div className="flex justify-center bg-slate-800/90 rounded-3xl p-4 lg:p-10 overflow-auto max-h-[80vh] border border-slate-700 shadow-inner scrollbar-thin scrollbar-thumb-slate-600 scrollbar-track-transparent backdrop-blur-sm">
           <div className="relative shadow-2xl shadow-black/50 print:shadow-none transition-transform duration-300 ease-out origin-top scale-[0.4] sm:scale-[0.55] md:scale-[0.7] lg:scale-90 xl:scale-100">
-            <div className="invoice-container bg-white" style={{ minWidth: '200mm' }}>
+            <div className="invoice-wrapper bg-white" style={{ width: '210mm' }}>
               <InvoiceView invoice={invoiceData} firm={displayFirm} />
             </div>
           </div>

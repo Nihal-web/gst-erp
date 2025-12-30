@@ -10,7 +10,7 @@ const Reports: React.FC = () => {
     const { invoices, firm } = useApp();
 
     const totalSales = invoices.reduce((sum, inv) => sum + inv.totalAmount, 0);
-    const totalTax = invoices.reduce((sum, inv) => sum + (inv.cgst || 0) + (inv.sgst || 0) + (inv.igst || 0), 0);
+    const totalTax = invoices.reduce((sum, inv) => sum + (inv.totalAmount - inv.totalTaxable), 0);
     const totalTaxable = invoices.reduce((sum, inv) => sum + inv.totalTaxable, 0);
 
     // Mock expense logic (since we don't have expenses yet)
@@ -18,8 +18,8 @@ const Reports: React.FC = () => {
     const netProfit = totalSales - estimatedExpenses;
 
     const gstByType = {
-        [InvoiceType.GOODS]: invoices.filter(i => i.type === InvoiceType.GOODS).reduce((s, i) => s + i.totalAmount, 0),
-        [InvoiceType.SERVICES]: invoices.filter(i => i.type === InvoiceType.SERVICES).reduce((s, i) => s + i.totalAmount, 0),
+        [InvoiceType.GOODS]: invoices.filter(i => i.type === InvoiceType.GOODS).reduce((s, i) => s + (i.totalAmount - i.totalTaxable), 0),
+        [InvoiceType.SERVICES]: invoices.filter(i => i.type === InvoiceType.SERVICES).reduce((s, i) => s + (i.totalAmount - i.totalTaxable), 0),
     };
 
     const handleDownloadStatement = () => {

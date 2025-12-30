@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Invoice, FirmSettings, InvoiceType } from '../types';
 import { formatCurrency, numberToWords } from '../utils/helpers';
+import QRCode from 'qrcode';
 
 interface Props {
   invoice: Invoice;
@@ -8,262 +9,414 @@ interface Props {
 }
 
 const InvoiceView: React.FC<Props> = ({ invoice, firm }) => {
+  const [qrCodeUrl, setQrCodeUrl] = useState('');
   const isInterState = invoice.igst !== undefined && invoice.igst > 0;
+
+  useEffect(() => {
+    if (firm.upiId) {
+      const upiString = `upi://pay?pa=${firm.upiId}&pn=${encodeURIComponent(firm.name)}&am=${invoice.totalAmount}&cu=INR`;
+      QRCode.toDataURL(upiString, { width: 100, margin: 0 })
+        .then(url => setQrCodeUrl(url))
+        .catch(err => console.error('QR Gen Error', err));
+    }
+  }, [firm.upiId, firm.name, invoice.totalAmount]);
 
   const getInvoiceTitle = () => {
     switch (invoice.type) {
       case InvoiceType.EXPORT: return 'EXPORT INVOICE';
       case InvoiceType.ISD: return 'ISD INVOICE';
+      case InvoiceType.REVERSE_CHARGE: return 'TAX INVOICE (RC)';
       default: return 'TAX INVOICE';
     }
   };
 
-  const ITEMS_PER_PAGE = 14; // Increased items per page for efficiency
+  // Helper to calculate item discount per unit (derived) or total discount
+  // Logic: List Price (Rate) * Qty = Expected Total. 
+  // Actual Taxable Value = Expected Total - Discount.
+  // So Discount = (Rate * Qty) - Taxable Value.
+  const calculateDiscount = (item: any) => {
+    const expected = item.rate * item.qty;
+    const discount = expected - item.taxableValue;
+    return discount > 0 ? discount : 0;
+  };
 
-  // Chunk items into pages
+  const formatDate = (dateStr: string) => {
+    if (!dateStr) return '';
+    try {
+      const date = new Date(dateStr);
+      if (isNaN(date.getTime())) return dateStr;
+      return date.toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    } catch {
+      return dateStr;
+    }
+  };
+
+  const ITEMS_PER_PAGE = 12; // Adjusted for better A4 fit
+
   const pages = [];
   for (let i = 0; i < invoice.items.length; i += ITEMS_PER_PAGE) {
     pages.push(invoice.items.slice(i, i + ITEMS_PER_PAGE));
   }
-
-  // If no items, show at least one blank page
   if (pages.length === 0) pages.push([]);
 
+  // Calculate generic totals for display if needed globally
+  const totalTax = invoice.items.reduce((acc, item) => acc + (item.taxableValue * item.gstPercent / 100), 0);
+  const totalDiscount = invoice.items.reduce((acc, item) => acc + calculateDiscount(item), 0);
+
   return (
-    <div className="flex flex-col gap-8 print:block print:gap-0">
-      {/* Print-specific style overrides and RGB Color enforcement for html2canvas */}
+    <div className="flex flex-col gap-8 print:block print:gap-0 font-sans text-std-black">
       <style>{`
         @media print {
+          @page { size: A4; margin: 0; }
+          body { -webkit-print-color-adjust: exact; }
           .print-break-after { break-after: page; }
         }
-        /* Override Tailwind v4 OKLCH colors with standard HEX for html2canvas compatibility */
-        .bg-black { background-color: #000000 !important; }
-        .text-black { color: #000000 !important; }
-        .bg-white { background-color: #ffffff !important; }
-        .text-white { color: #ffffff !important; }
-        .border-black { border-color: #000000 !important; }
-        .border-white { border-color: #ffffff !important; }
-        .border-gray-300 { border-color: #d1d5db !important; }
-        .border-gray-400 { border-color: #9ca3af !important; }
         
-        .invoice-table th, .invoice-table td {
-          border-right: 1.5px solid #000;
-          padding: 4px 6px;
+        /* Base styles for the invoice to match PDF and avoid OKLCH errors */
+        .invoice-container {
+            width: 210mm;
+            min-height: 297mm;
+            padding: 10mm;
+            margin: 0 auto;
+            background: #ffffff;
+            font-size: 10px;
+            display: flex;
+            flex-direction: column;
+            border: 1px solid #d1d5db; /* Visible on screen */
+            box-sizing: border-box;
         }
-        .invoice-table th:last-child, .invoice-table td:last-child {
-          border-right: none;
+        
+        .invoice-container * {
+            box-sizing: border-box;
         }
-        .invoice-table tr {
-          border-bottom: 1.5px solid #000;
+
+        @media print {
+            .invoice-container {
+                border: none;
+                height: 297mm;
+            }
         }
+
+        /* Explicit Hex Colors/Styles to avoid Tailwind OKLCH issues in html2canvas */
+        .text-std-black { color: #000000; }
+        .text-std-white { color: #ffffff; }
+        .bg-std-black { background-color: #000000; }
+        .bg-std-white { background-color: #ffffff; }
+        
+        .border-std-black { border-color: #000000; }
+        .border-std-gray { border-color: #d1d5db; }
+        
+        /* Custom Grays with explicit Hex */
+        .bg-gray-light { background-color: #f9fafb; }
+        .bg-gray-med { background-color: #f3f4f6; }
+        
+        /* Text Colors */
+        .text-gray-med { color: #9ca3af; }
+        .text-gray-dark { color: #6b7280; }
+
+        /* Borders helpers */
+        .border-right { border-right: 1px solid #000000; }
+        .border-bottom { border-bottom: 1px solid #000000; }
+        .border-top { border-top: 1px solid #000000; }
+        .border-left { border-left: 1px solid #000000; }
+        
+        /* Specific border colors used in layouts */
+        .border-b-gray { border-bottom: 1px solid #e5e7eb; } 
+        .border-b-std-gray { border-bottom: 1px solid #d1d5db; }
+        
+        .border-b-black { border-bottom: 1px solid #000000; }
+        .border-r-black { border-right: 1px solid #000000; }
+        .border-t-black { border-top: 1px solid #000000; }
+
+        /* Table Styles */
         .invoice-table {
-          border: 1.5px solid #000;
-          border-collapse: collapse;
-          width: 100%;
-          font-size: 11px;
+            width: 100%;
+            border-collapse: collapse;
+        }
+        .invoice-table th {
+            border-bottom: 1px solid #000000;
+            border-right: 1px solid #000000;
+            font-weight: bold;
+            padding: 4px;
+            text-align: center;
+            background: transparent;
+        }
+        .invoice-table th:last-child { border-right: none; }
+        
+        .invoice-table td {
+            border-right: 1px solid #000000;
+            padding: 4px;
+            vertical-align: top;
+        }
+        .invoice-table td:last-child { border-right: none; }
+
+        .text-xxs { font-size: 8px; }
+        .font-bold-title { font-size: 18px; font-weight: 800; }
+        /* Sticky Underline Class */
+        .sticky-underline {
+            border-bottom: 2px solid #000000; /* Made slightly thicker for emphasis as per "stick more" intent */
+            padding-bottom: 2px;
+            display: inline-block;
+            line-height: 2; /* Pull border up to touch CAPS baseline */
+        }
+        .sticky-underline-2 {
+            border-bottom: 1px solid #000000; 
+            padding-bottom: 2px;
+            display: inline-block;
+            line-height: 2; 
+        }
+
+        .invoice-table {
+            width: 100%;
+            border-collapse: collapse;
+            position: relative;
+            z-index: 10;
         }
       `}</style>
+
+      {/* Hidden container for QR Code generator if needed, but we use useEffect */}
 
       {pages.map((itemChunk, pageIdx) => {
         const isLastPage = pageIdx === pages.length - 1;
 
         return (
-          <div
-            key={pageIdx}
-            className="bg-white text-black font-sans box-border mx-auto print-break-after"
-            style={{
-              width: '210mm',
-              height: '297mm',
-              padding: '10mm',
-              fontSize: '11px',
-              display: 'flex',
-              flexDirection: 'column',
-              justifyContent: 'space-between'
-            }}
-          >
-            {/* Top Content Wrapper */}
-            <div className="flex-grow flex flex-col">
+          <div key={pageIdx} className="invoice-container print-break-after relative">
 
-              {/* --- HEADER (Grid) --- */}
-              <div className="grid grid-cols-2 gap-4 mb-4 border-b-[1.5px] border-black pb-4">
-                <div className="pr-4">
-                  <h1 className="text-3xl font-black uppercase mb-1 tracking-tight">{firm.name}</h1>
-                  <p className="text-[10px] uppercase font-bold tracking-widest mb-3 opacity-75">{firm.tagline}</p>
-                  <div className="text-[10px] leading-snug font-medium">
-                    <p>{firm.address}</p>
-                    <p className="mt-1">
-                      GSTIN: <span className="font-bold">{firm.gstin}</span> &nbsp;|&nbsp;
-                      PAN: <span className="font-bold">{firm.pan}</span>
-                    </p>
-                    <p>Ph: {firm.phone} | {firm.email}</p>
+            {/* --- TOP HEADER --- */}
+            <div className="flex justify-between items-center text-[9px] mb-1">
+              <span>Page No. {pageIdx + 1} of {pages.length}</span>
+              <span className="font-bold text-sm sticky-underline">{getInvoiceTitle()}</span>
+              <span>Original Copy</span>
+            </div>
+
+            {/* --- MAIN BORDERED CONTAINER --- */}
+            <div className="bordered-box border-std-black border flex-grow flex flex-col">
+
+              {/* COMPANY HEADER */}
+              <div className="border-bottom flex flex-col items-center justify-center p-4 text-center">
+                <h1 className="font-bold-title uppercase tracking-wide">{firm.name}</h1>
+                <p className="text-[10px] mt-1">{firm.address}</p>
+                <p className="text-[10px] mt-1 font-semibold">
+                  Mobile: {firm.phone} | Email: {firm.email}
+                </p>
+                <p className="mt-2 font-bold text-sm">GSTIN - {firm.gstin}</p>
+              </div>
+
+              {/* INVOICE METADATA GRID - Adjusted Grid Cols for Better Supply Fit */}
+              <div className="border-bottom grid grid-cols-[1.2fr_0.9fr_1.3fr_1.0fr_0.8fr] text-[9px] divide-x divide-black">
+                <div className="p-1 pl-2 border-r-black">
+                  <span className="font-bold">Invoice No:</span> <span className="ml-1">{invoice.invoiceNo}</span>
+                </div>
+                <div className="p-1 pl-2 border-r-black">
+                  <span className="font-bold">Date:</span> <span className="ml-1">{formatDate(invoice.date)}</span>
+                </div>
+                <div className="p-1 pl-2 border-r-black">
+                  {/* Removed truncate to prevent cutoff and allowed wrapping */}
+                  <span className="font-bold">Place of Supply:</span> <span className="ml-1">{invoice.customer.stateCode}-{invoice.customer.state}</span>
+                </div>
+                <div className="p-1 pl-2 border-r-black">
+                  <span className="font-bold">Due Date:</span> <span className="ml-1">{formatDate(invoice.date)}</span>
+                </div>
+                <div className="p-1 pl-2">
+                  <span className="font-bold">Reverse Charge:</span> <span className="ml-1">{invoice.isReverseCharge ? 'Yes' : 'No'}</span>
+                </div>
+              </div>
+
+              {/* BILLING & SHIPPING SPLIT */}
+              <div className="border-bottom grid grid-cols-2">
+                {/* Billing */}
+                <div className="p-2 border-r-black">
+                  <div className="font-bold uppercase text-[9px] mb-1 border-b-std-gray pb-1 inline-block">Billing Details</div>
+                  <div className="text-[10px] leading-tight flex flex-col gap-1">
+                    <p><span className="font-bold w-12 inline-block">Name:</span> {invoice.customer.name}</p>
+                    <p><span className="font-bold w-12 inline-block">Address:</span> {invoice.customer.address}</p>
+                    <p><span className="font-bold w-12 inline-block">GSTIN:</span> {invoice.customer.gstin}</p>
+                    <p><span className="font-bold w-12 inline-block">Mobile:</span> {invoice.customer.phone}</p>
+                    <p><span className="font-bold w-12 inline-block">State:</span> {invoice.customer.state} ({invoice.customer.stateCode})</p>
                   </div>
                 </div>
-
-                <div className="flex flex-col items-end text-right">
-                  <div className="bg-black text-white px-6 py-2 font-black text-sm uppercase tracking-widest mb-3">
-                    {getInvoiceTitle()}
-                  </div>
-                  <div className="w-full">
-                    <div className="grid grid-cols-[auto_1fr] gap-x-3 text-[10px] text-right justify-end items-center">
-                      <span className="font-bold opacity-60 uppercase tracking-wide">Invoice No:</span>
-                      <span className="font-black text-sm">{invoice.invoiceNo}</span>
-
-                      <span className="font-bold opacity-60 uppercase tracking-wide">Date:</span>
-                      <span className="font-bold text-sm">{invoice.date}</span>
-
-                      <span className="font-bold opacity-60 uppercase tracking-wide">Place of Supply:</span>
-                      <span className="font-bold">{invoice.customer.state}</span>
-                    </div>
+                {/* Shipping (Mirrored) */}
+                <div className="p-2">
+                  <div className="font-bold uppercase text-[9px] mb-1 border-b-std-gray pb-1 inline-block">Shipping Details</div>
+                  <div className="text-[10px] leading-tight flex flex-col gap-1">
+                    <p><span className="font-bold w-12 inline-block">Name:</span> {invoice.customer.name}</p>
+                    <p><span className="font-bold w-12 inline-block">Address:</span> {invoice.customer.address}</p>
+                    <p><span className="font-bold w-12 inline-block">GSTIN:</span> {invoice.customer.gstin}</p>
+                    <p><span className="font-bold w-12 inline-block">Mobile:</span> {invoice.customer.phone}</p>
+                    <p><span className="font-bold w-12 inline-block">State:</span> {invoice.customer.state} ({invoice.customer.stateCode})</p>
                   </div>
                 </div>
               </div>
 
-              {/* --- BILL TO (Grid) --- */}
-              <div className="grid grid-cols-2 border-[1.5px] border-black mb-4">
-                <div className="p-3 border-r-[1.5px] border-black">
-                  <p className="text-[9px] font-black uppercase opacity-50 mb-1 tracking-wider">Billed To</p>
-                  <h2 className="text-sm font-black uppercase mb-1">{invoice.customer.name}</h2>
-                  <div className="text-[10px] leading-tight font-medium opacity-90">
-                    <p>{invoice.customer.address}</p>
-                    <p className="mt-1">GSTIN: <span className="font-bold">{invoice.customer.gstin}</span></p>
-                    <p>State: {invoice.customer.state} ({invoice.customer.stateCode})</p>
-                  </div>
+              {/* ITEM TABLE */}
+              <div className="flex-grow relative">
+                {/* FULL HEIGHT VERTICAL GRID LINES OVERLAY */}
+                <div className="absolute inset-0 flex pointer-events-none z-0">
+                  <div className="w-8 border-r-black h-full"></div>
+                  <div className="flex-1 border-r-black h-full"></div>
+                  <div className="w-16 border-r-black h-full"></div>
+                  <div className="w-12 border-r-black h-full"></div>
+                  <div className="w-12 border-r-black h-full"></div>
+                  <div className="w-20 border-r-black h-full"></div>
+                  <div className="w-16 border-r-black h-full"></div>
+                  <div className="w-12 border-r-black h-full"></div>
+                  <div className="w-24 h-full"></div>
                 </div>
-                <div className="p-3">
-                  <p className="text-[9px] font-black uppercase opacity-50 mb-2 tracking-wider">Details</p>
-                  <div className="flex flex-col gap-1 text-[10px]">
-                    <div className="flex justify-between border-b border-dashed border-gray-400 pb-1">
-                      <span className="opacity-70 uppercase text-[9px] font-bold">Reverse Charge</span>
-                      <span className="font-bold">{invoice.isReverseCharge ? 'Yes' : 'No'}</span>
-                    </div>
-                    <div className="flex justify-between border-b border-dashed border-gray-400 pb-1">
-                      <span className="opacity-70 uppercase text-[9px] font-bold">Vehicle/Transport</span>
-                      <span className="font-bold">{invoice.transport || 'NA'}</span>
-                    </div>
-                    {invoice.poNo && (
-                      <div className="flex justify-between border-b border-dashed border-gray-400 pb-1">
-                        <span className="opacity-70 uppercase text-[9px] font-bold">PO No</span>
-                        <span className="font-bold">{invoice.poNo}</span>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
 
-              {/* --- ITEMS TABLE --- */}
-              <div className="flex-grow">
-                <table className="invoice-table">
+                <table className="invoice-table text-[9px] relative z-10 w-full">
                   <thead>
-                    <tr className="bg-black text-white uppercase text-[9px] font-bold tracking-wider">
-                      <th className="w-10 text-center py-2">Sr</th>
-                      <th className="text-left py-2 pl-2">Description</th>
-                      <th className="w-20 text-center py-2">HSN/SAC</th>
-                      <th className="w-14 text-center py-2">Qty</th>
-                      <th className="w-14 text-right py-2">Unit</th>
-                      <th className="w-24 text-right py-2">Rate</th>
-                      <th className="w-28 text-right py-2 pr-2">Amount</th>
+                    <tr className="h-8">
+                      <th className="w-8">Sr.</th>
+                      <th className="text-left pl-2">Item Description</th>
+                      <th className="w-16">HSN/SAC</th>
+                      <th className="w-12">Qty</th>
+                      <th className="w-12">Unit</th>
+                      <th className="w-20 text-right">Rate</th>
+                      <th className="w-16 text-right">Disc.</th>
+                      <th className="w-12">Tax %</th>
+                      <th className="w-24 text-right pr-2">Amount</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {itemChunk.map((item, idx) => (
-                      <tr key={idx}>
-                        <td className="text-center font-bold">{(pageIdx * ITEMS_PER_PAGE) + idx + 1}</td>
-                        <td className="py-2 pl-2">
-                          <p className="font-bold text-[10px]">{item.productName}</p>
-                          <p className="text-[8px] opacity-60 mt-0.5 tracking-wide">
-                            {isInterState ? `IGST: ${item.gstPercent}%` : `CGST:${item.gstPercent / 2}% | SGST:${item.gstPercent / 2}%`}
-                          </p>
-                        </td>
-                        <td className="text-center font-bold">{item.hsn || item.sac}</td>
-                        <td className="text-center font-bold">{item.qty}</td>
-                        <td className="text-right text-[9px] uppercase">{item.unit}</td>
-                        <td className="text-right">{formatCurrency(item.rate)}</td>
-                        <td className="text-right font-black pr-2">{formatCurrency(item.taxableValue)}</td>
-                      </tr>
-                    ))}
-                    {/* Fill empty rows if needed to maintain structure */}
-                    {Array.from({ length: Math.max(0, 5 - itemChunk.length) }).map((_, i) => (
-                      <tr key={`empty-${i}`} style={{ height: '24px' }}>
-                        <td></td><td></td><td></td><td></td><td></td><td></td><td></td>
+                    {itemChunk.map((item, idx) => {
+                      const discount = calculateDiscount(item);
+                      return (
+                        <tr key={idx} className="border-b-gray">
+                          <td className="text-center">{(pageIdx * ITEMS_PER_PAGE) + idx + 1}</td>
+                          <td className="pl-2">
+                            <p className="font-bold">{item.productName}</p>
+                            <p className="text-[8px] italic">{item.hsn ? 'HSN' : 'SAC'}</p>
+                          </td>
+                          <td className="text-center">{item.hsn || item.sac}</td>
+                          <td className="text-center font-bold">{item.qty}</td>
+                          <td className="text-center uppercase">{item.unit}</td>
+                          <td className="text-right">{formatCurrency(item.rate)}</td>
+                          <td className="text-right">{discount > 0 ? formatCurrency(discount) : '-'}</td>
+                          <td className="text-center">{item.gstPercent}%</td>
+                          <td className="text-right font-bold pr-2">{formatCurrency(item.taxableValue)}</td>
+                        </tr>
+                      )
+                    })}
+
+                    {/* Fill Remaining Rows to maintain correct height and vertical lines */}
+                    {Array.from({ length: Math.max(0, ITEMS_PER_PAGE - itemChunk.length) }).map((_, i) => (
+                      <tr key={`empty-${i}`} className="border-b-gray h-8">
+                        <td className="border-right"></td>
+                        <td className="border-right"></td>
+                        <td className="border-right"></td>
+                        <td className="border-right"></td>
+                        <td className="border-right"></td>
+                        <td className="border-right"></td>
+                        <td className="border-right"></td>
+                        <td className="border-right"></td>
+                        <td></td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
-            </div>
 
-            {/* --- FOOTER SECTION --- */}
-            <div>
-              {isLastPage ? (
-                <div className="mt-4 border-[1.5px] border-black text-[10px]">
-                  {/* Summary Grid */}
-                  <div className="grid grid-cols-[2fr_1fr] border-b-[1.5px] border-black">
-                    {/* Bottom Left: Words & Bank */}
-                    <div className="p-3 border-r-[1.5px] border-black flex flex-col justify-between">
-                      <div>
-                        <p className="uppercase opacity-50 text-[8px] font-bold tracking-wider">Amount in Words</p>
-                        <p className="font-black italic text-sm mt-1">{numberToWords(invoice.totalAmount)}</p>
+              {/* FOOTER TOTALS AREA */}
+              {isLastPage && (
+                <div className="border-top text-[10px]">
+                  {/* Calculations */}
+                  <div className="grid grid-cols-[1fr_200px]">
+                    {/* Left Footer Content */}
+                    <div className="flex flex-col justify-between border-r-black">
+                      <div className="p-2 border-b-black">
+                        <p className="text-[9px] uppercase font-bold text-gray-med">Amount in Words</p>
+                        <p className="font-bold italic mt-1 capitalize">{numberToWords(invoice.totalAmount)} only</p>
                       </div>
 
-                      <div className="mt-6 flex gap-8">
-                        <div className="flex-1">
-                          <p className="font-black uppercase mb-2 underline underline-offset-2 text-[9px]">Bank Details</p>
-                          <div className="grid grid-cols-[auto_1fr] gap-x-2 text-[10px]">
-                            <span className="opacity-70 font-bold">Bank:</span> <span className="font-bold">{firm.bankName}</span>
-                            <span className="opacity-70 font-bold">A/c No:</span> <span className="font-bold">{firm.accNumber}</span>
-                            <span className="opacity-70 font-bold">IFSC:</span> <span className="font-bold">{firm.ifsc}</span>
+                      {/* Tax Breakup / Terms Grid */}
+                      <div className="grid grid-cols-2 flex-grow">
+                        <div className="p-2 border-r-black">
+                          <p className="mb-1"><span className="font-bold sticky-underline-2">Bank Details</span></p>
+                          <div className="grid grid-cols-[auto_1fr] gap-x-2 text-[9px] leading-snug">
+                            <span>Bank:</span> <span className="font-bold">{firm.bankName}</span>
+                            <span>Acc No:</span> <span className="font-bold">{firm.accNumber}</span>
+                            <span>IFSC:</span> <span className="font-bold">{firm.ifsc}</span>
+                            <span>Branch:</span> <span>{firm.bankBranch || 'Main'}</span>
+                          </div>
+
+                          <div className="mt-4 flex items-center gap-2">
+                            {/* Dynamic QR Code */}
+                            <div className="w-12 h-12 flex items-center justify-center">
+                              {qrCodeUrl ? (
+                                <img src={qrCodeUrl} alt="UPI QR" className="w-full h-full object-contain" />
+                              ) : (
+                                <div className="border-std-black border w-full h-full flex items-center justify-center text-[6px] text-center">Loading QR</div>
+                              )}
+                            </div>
+                            <div className="text-[8px] leading-tight">
+                              <p>Scan to Pay via UPI</p>
+                              <p className="font-bold">{firm.upiId}</p>
+                            </div>
                           </div>
                         </div>
-                        <div className="flex-1 border-l border-gray-300 pl-4">
-                          <p className="font-black uppercase mb-2 underline underline-offset-2 text-[9px]">Terms & Conditions</p>
-                          <ul className="list-disc pl-3 leading-tight opacity-80 text-[9px]">
-                            {firm.terms.slice(0, 2).map((t, i) => <li key={i}>{t}</li>)}
-                          </ul>
+
+                        <div className="p-2 flex flex-col justify-between">
+                          <div>
+                            <p className="mb-1"><span className="font-bold sticky-underline-2 ">Terms and Conditions</span></p>
+                            <div className="text-[8px] leading-tight flex flex-col gap-0.5">
+                              <div className="flex items-start">
+                                <span className="font-bold mr-1">1.</span>
+                                <span>E & O.E.</span>
+                              </div>
+                              {firm.terms.slice(0, 3).map((t, i) => (
+                                <div key={i} className="flex items-start">
+                                  <span className="font-bold mr-1">{i + 2}.</span>
+                                  <span>{t}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                          <div className="border-t-black mt-2 pt-1">
+                            <p className="text-[8px]">Certified that the particulars given above are true and correct.</p>
+                          </div>
                         </div>
                       </div>
                     </div>
 
-                    {/* Bottom Right: Totals */}
-                    <div>
-                      <div className="flex justify-between p-2 border-b border-gray-300">
-                        <span className="font-bold opacity-80">Taxable Amount</span>
+                    {/* Right Totals Column */}
+                    <div className="text-[9px]">
+                      <div className="flex justify-between p-1 px-2 border-b-std-gray">
+                        <span>Taxable Amount</span>
                         <span className="font-bold">{formatCurrency(invoice.totalTaxable)}</span>
                       </div>
-                      <div className="flex justify-between p-2 border-b border-gray-300">
-                        <span className="font-bold opacity-80">Total Tax</span>
-                        <span className="font-bold">{formatCurrency(invoice.items.reduce((acc, item) => acc + (item.taxableValue * item.gstPercent / 100), 0))}</span>
+                      <div className="flex justify-between p-1 px-2 border-b-std-gray">
+                        <span>Total Tax</span>
+                        <span className="font-bold">{formatCurrency(totalTax)}</span>
                       </div>
-                      <div className="flex justify-between p-3 bg-black text-white items-center mt-[-1px]">
-                        <span className="font-black text-xl tracking-widest">TOTAL</span>
-                        <span className="font-black text-xl">₹{formatCurrency(invoice.totalAmount)}</span>
+                      <div className="flex justify-between p-1 px-2 border-b-std-gray">
+                        <span>Discount</span>
+                        <span className="font-bold">{formatCurrency(totalDiscount)}</span>
                       </div>
-                    </div>
-                  </div>
 
-                  {/* Signatures */}
-                  <div className="flex justify-between items-end p-4 h-28">
-                    <div className="w-1/2 text-[9px] opacity-70 leading-relaxed">
-                      <p className="font-bold underline mb-1">Declaration:</p>
-                      <p>{firm.declaration}</p>
-                    </div>
-                    <div className="w-1/3 flex flex-col items-center justify-end h-full">
-                      <p className="font-bold uppercase text-[9px] mb-8 text-center">For {firm.name}</p>
-                      <div className="border-t border-black w-full pt-1 font-bold uppercase text-[9px] text-center tracking-wider"> Authorized Signatory </div>
+                      <div className="flex justify-between p-1 px-2 border-b-black bg-gray-med font-bold text-sm items-center py-2 h-10">
+                        <span>TOTAL</span>
+                        <span>₹{formatCurrency(invoice.totalAmount)}</span>
+                      </div>
+
+                      {/* Signature */}
+                      <div className="h-32 p-2 flex flex-col justify-between items-center text-center">
+                        <p className="font-bold text-[8px]">For {firm.name}</p>
+                        <div className="w-full">
+                          <p className="text-[8px] uppercase font-bold border-t-black pt-1">Authorized Signatory</p>
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </div>
-              ) : (
-                <div className="mt-4 text-center text-[10px] font-bold italic opacity-60">
+              )}
+
+              {!isLastPage && (
+                <div className="absolute bottom-0 w-full text-center border-t-black p-1 text-[8px] italic">
                   Continued on next page...
                 </div>
               )}
 
-              {/* Static Page Count */}
-              <div className="text-right text-[9px] font-bold opacity-40 mt-2">
-                Page {pageIdx + 1} of {pages.length}
-              </div>
             </div>
-
           </div>
         );
       })}
