@@ -98,8 +98,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (created) {
           setUser({ ...created, email, name: created.name, shopName: created.shop_name } as any);
           setOriginalRole(created.role as UserRole);
-        } else if (insErr) {
-          console.error("Profile creation failed", insErr);
+        } else {
+          // Fallback: If DB insert fails/returns null (RLS?), use session data so user can at least login
+          console.warn("Profile creation returned no data, using session fallback", insErr);
+          const fallbackUser = {
+            id: userId,
+            email,
+            name: meta.name || 'User',
+            role: (meta.role as UserRole) || UserRole.ADMIN,
+            shopName: meta.shop_name || 'My Shop',
+            status: 'active'
+          };
+          setUser(fallbackUser as any);
+          setOriginalRole(fallbackUser.role);
         }
       }
     } catch (e) {
