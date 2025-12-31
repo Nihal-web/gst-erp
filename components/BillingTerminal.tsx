@@ -475,28 +475,7 @@ const BillingTerminal: React.FC = () => {
             >
               WhatsApp 💬
             </button>
-            {invoiceData.totalTaxable > 500 && (
-              <button
-                onClick={() => {
-                  if (!validateGSTIN(invoiceData.customer.gstin)) {
-                    showAlert("Invalid Information: Customer GSTIN format is incorrect.", "error");
-                    return;
-                  }
-                  const json = generateEWayBillJSON(invoiceData, firm.gstin);
-                  const blob = new Blob([JSON.stringify(json, null, 2)], { type: 'application/json' });
-                  const url = URL.createObjectURL(blob);
-                  const a = document.createElement('a');
-                  a.href = url;
-                  a.download = `eway_bill_${invoiceData.invoiceNo}.json`;
-                  a.click();
-                  logActivity(user?.email || 'System', 'EXPORT EWAY', `Exported JSON for ${invoiceData.invoiceNo}`);
-                  showAlert("E-Way Bill JSON downloaded!", "success");
-                }}
-                className="w-full sm:w-auto bg-amber-500 text-white px-6 py-3 rounded-2xl hover:bg-amber-600 font-black shadow-xl shadow-amber-200 transition-all active:scale-95 flex items-center justify-center gap-2"
-              >
-                Export JSON 📄
-              </button>
-            )}
+
           </div>
         </div>
 
