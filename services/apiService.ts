@@ -79,6 +79,7 @@ export const fetchCustomers = async (): Promise<Customer[]> => {
         .from('customers')
         .select('*')
         .eq('tenant_id', user.id)
+        .neq('status', 'archived')
         .order('created_at', { ascending: false });
 
     if (error) throw error;
@@ -132,7 +133,7 @@ export const updateCustomerApi = async (customer: Customer): Promise<Customer> =
 };
 
 export const deleteCustomerApi = async (id: string) => {
-    const { error } = await supabase.from('customers').delete().eq('id', id);
+    const { error } = await supabase.from('customers').update({ status: 'archived' }).eq('id', id);
     if (error) throw error;
 };
 
@@ -192,6 +193,7 @@ export const fetchProducts = async (): Promise<Product[]> => {
         .from('inventory')
         .select('*, packaging_units(*)')
         .eq('tenant_id', user.id)
+        .neq('status', 'archived')
         .order('created_at', { ascending: false });
 
     if (error) throw error;
@@ -228,7 +230,8 @@ export const createProduct = async (product: Product): Promise<Product> => {
         stock: product.stock,
         gst_percent: product.gstPercent,
         alert_threshold: product.alertThreshold ?? 10,
-        warehouse_id: product.warehouseId,
+        warehouse_id: product.warehouseId || null,
+        barcode: product.barcode || null,
         status: 'active'
     };
 
@@ -247,6 +250,39 @@ export const createProduct = async (product: Product): Promise<Product> => {
     }
 
     return { ...data, gstPercent: data.gst_percent } as Product;
+};
+
+export const updateProductApi = async (product: Product): Promise<Product> => {
+    const payload = {
+        name: product.name,
+        product_name: product.productName,
+        description: product.description,
+        hsn: product.hsn,
+        sac: product.sac || null,
+        rate: product.rate,
+        unit: product.unit,
+        stock: product.stock,
+        gst_percent: product.gstPercent,
+        alert_threshold: product.alertThreshold ?? 10,
+        warehouse_id: product.warehouseId,
+        barcode: product.barcode
+    };
+
+    const { data, error } = await supabase
+        .from('inventory')
+        .update(payload)
+        .eq('id', product.id)
+        .select()
+        .single();
+
+    if (error) throw error;
+
+    return { ...data, gstPercent: data.gst_percent } as Product;
+};
+
+export const deleteProductApi = async (id: string): Promise<void> => {
+    const { error } = await supabase.from('inventory').update({ status: 'archived' }).eq('id', id);
+    if (error) throw error;
 };
 
 // --- INVOICES ---
@@ -599,5 +635,22 @@ export const createWarehouse = async (warehouse: any) => {
 export const deleteWarehouse = async (id: string) => {
     const { error } = await supabase.from('warehouses').delete().eq('id', id);
     if (error) throw error;
+};
+
+// --- STORAGE ---
+export const uploadInvoicePDF = async (blob: Blob, fileName: string): Promise<string | null> => {
+    const filePath = `public/${fileName}`;
+    const { error: uploadError } = await supabase.storage.from('invoices').upload(filePath, blob, {
+        contentType: 'application/pdf',
+        upsert: true
+    });
+
+    if (uploadError) {
+        console.error("Upload Error:", uploadError);
+        return null;
+    }
+
+    const { data } = supabase.storage.from('invoices').getPublicUrl(filePath);
+    return data.publicUrl;
 };
 

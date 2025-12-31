@@ -46,6 +46,7 @@ export interface Product {
   productName?: string; // New field for simple "Goods Name"
   description?: string; // Additional details
   type: 'GOODS' | 'SERVICES'; // Added for proper HSN/SAC handling
+  barcode?: string; // EAN/UPC Code
   hsn: string;
   sac?: string;
   rate: number;

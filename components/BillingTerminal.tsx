@@ -4,11 +4,16 @@ import html2canvas from 'html2canvas';
 import { Customer, Product, InvoiceItem, Invoice, InvoiceType } from '../types';
 import InvoiceView from './InvoiceView';
 import { formatCurrency } from '../utils/helpers';
+import { createInvoice, fetchProducts, uploadInvoicePDF } from '../services/apiService';
 import { fetchHSNDetails } from '../services/geminiService';
+import { generateEWayBillJSON, validateGSTIN } from '../utils/ewayBill';
+import { logActivity } from '../services/auditService';
 import { useApp } from '../AppContext';
+import { useAuth } from '../AuthContext';
 
 const BillingTerminal: React.FC = () => {
   const { products, customers, addInvoice, firm, showAlert, invoices } = useApp();
+  const { user } = useAuth();
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [items, setItems] = useState<InvoiceItem[]>([]);
   const [showInvoice, setShowInvoice] = useState(false);
@@ -63,6 +68,75 @@ const BillingTerminal: React.FC = () => {
     setShippingBill('');
     setShippingDate('');
     showAlert("Billing table cleared.", "info");
+  };
+
+  // --- Barcode Scanner Listener ---
+  React.useEffect(() => {
+    let buffer = '';
+    let lastKeyTime = Date.now();
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Ignore if user is typing in an input field (except body)
+      if ((e.target as HTMLElement).tagName === 'INPUT' || (e.target as HTMLElement).tagName === 'TEXTAREA') {
+        return;
+      }
+
+      const currentTime = Date.now();
+      const char = e.key;
+
+      if (currentTime - lastKeyTime > 100) {
+        buffer = ''; // Reset buffer if too slow (manual typing)
+      }
+      lastKeyTime = currentTime;
+
+      if (char === 'Enter') {
+        if (buffer.length > 3) {
+          // Attempt to find product by barcode or ID
+          const product = products.find(p => p.barcode === buffer || p.id === buffer || p.productName === buffer);
+          if (product) {
+            addItemToCart(product);
+            buffer = '';
+            e.preventDefault();
+          }
+        }
+        buffer = '';
+      } else if (char.length === 1) {
+        buffer += char;
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [products, items]); // Re-bind when products change
+
+  const addItemToCart = (p: Product) => {
+    // Check if item already exists
+    const existingIndex = items.findIndex(i => i.productId === p.id);
+
+    if (existingIndex >= 0) {
+      // Increment Qty
+      const newItems = [...items];
+      newItems[existingIndex].qty += 1;
+      newItems[existingIndex].taxableValue = newItems[existingIndex].qty * newItems[existingIndex].rate;
+      setItems(newItems);
+      showAlert(`Added +1 ${p.name}`, "success");
+    } else {
+      // Add New Item
+      const newItem: InvoiceItem = {
+        productId: p.id,
+        productName: p.name,
+        hsn: p.hsn,
+        sac: p.sac || '',
+        qty: 1,
+        rate: p.rate,
+        unit: p.unit,
+        taxableValue: p.rate,
+        gstPercent: p.gstPercent,
+        conversionFactor: undefined
+      };
+      setItems([...items, newItem]);
+      showAlert(`Scanned: ${p.name}`, "success");
+    }
   };
 
   const updateItem = (index: number, field: keyof InvoiceItem, value: any) => {
@@ -214,32 +288,23 @@ const BillingTerminal: React.FC = () => {
     };
 
     addInvoice(invoice);
+    logActivity(firm.email || 'admin', 'CREATE INVOICE', `Generated Invoice ${generatedInvoiceNo} for ₹${totalAmount}`);
     setInvoiceData(invoice);
     setShowInvoice(true);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-
-  const handlePrint = async () => {
-    setIsPrinting(true);
+  const generateInvoicePDF = async (): Promise<Blob | null> => {
     const invoiceElement = document.querySelector('.invoice-container') as HTMLElement;
-
     if (!invoiceElement) {
       showAlert("Could not find invoice to generate PDF.", "error");
-      setIsPrinting(false);
-      return;
+      return null;
     }
 
     try {
       showAlert("Preparing document...", "info");
-
-      // Wait for resources
       await new Promise(resolve => setTimeout(resolve, 500));
 
-      // 1. Create a clean, isolated container with FIXED PIXEL WIDTH
-      // 210mm @ 96 DPI ~= 793.7px. We use 794px.
-      // 1. Create a clean, isolated container with FIXED PIXEL WIDTH
-      // 210mm @ 96 DPI ~= 793.7px. We use 794px.
       const A4_PIXEL_WIDTH = 794;
       const A4_PIXEL_HEIGHT = 1123;
 
@@ -247,15 +312,12 @@ const BillingTerminal: React.FC = () => {
       tempContainer.style.position = 'fixed';
       tempContainer.style.top = '0';
       tempContainer.style.left = '0';
-      // Force the environment to match A4 width exactly
       tempContainer.style.width = `${A4_PIXEL_WIDTH}px`;
       tempContainer.style.minHeight = `${A4_PIXEL_HEIGHT}px`;
       tempContainer.style.zIndex = '-9999';
       tempContainer.style.background = '#ffffff';
       document.body.appendChild(tempContainer);
 
-      // --- CRITICAL FIX: Clone the styles from InvoiceView ---
-      // The <style> tag is a sibling of the invoice-container in the DOM
       if (invoiceElement.parentElement) {
         const styleTag = invoiceElement.parentElement.querySelector('style');
         if (styleTag) {
@@ -263,15 +325,11 @@ const BillingTerminal: React.FC = () => {
         }
       }
 
-      // 2. Clone invoice
       const clonedInvoice = invoiceElement.cloneNode(true) as HTMLElement;
-
-      // 3. Normalize styles for capture
-      clonedInvoice.className = 'invoice-container'; // Clean class
-      // Important: Overwrite width to fill the container 100%
+      clonedInvoice.className = 'invoice-container';
       clonedInvoice.style.width = '100%';
       clonedInvoice.style.minHeight = `${A4_PIXEL_HEIGHT}px`;
-      clonedInvoice.style.padding = '35px'; // Approx 10mm
+      clonedInvoice.style.padding = '35px';
       clonedInvoice.style.margin = '0';
       clonedInvoice.style.border = 'none';
       clonedInvoice.style.boxShadow = 'none';
@@ -280,20 +338,17 @@ const BillingTerminal: React.FC = () => {
 
       tempContainer.appendChild(clonedInvoice);
 
-      // 4. Capture
       const canvas = await html2canvas(tempContainer, {
         scale: 2,
         useCORS: true,
         logging: false,
         backgroundColor: '#ffffff',
         width: A4_PIXEL_WIDTH,
-        windowWidth: A4_PIXEL_WIDTH, // Force window context to be A4 width
+        windowWidth: A4_PIXEL_WIDTH,
       });
 
-      // 5. Cleanup
       document.body.removeChild(tempContainer);
 
-      // 6. Generate PDF
       const imgData = canvas.toDataURL('image/jpeg', 0.98);
       const pdf = new jsPDF({
         orientation: 'portrait',
@@ -304,17 +359,12 @@ const BillingTerminal: React.FC = () => {
 
       const pdfWidth = 210;
       const pdfHeight = 297;
-
-      // Calculate logic height based on A4 width
       const imgProps = pdf.getImageProperties(imgData);
       const contentHeight = (imgProps.height * pdfWidth) / imgProps.width;
 
-      // If content is roughly A4 (within 10mm tolerance), FORCE STRETCH to fill page nicely
-      // This eliminates the "back canvas bigger" white borders if aspect ratio is slightly off.
       if (Math.abs(contentHeight - pdfHeight) < 20) {
         pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight);
       } else {
-        // Long page logic
         if (contentHeight > pdfHeight) {
           const customPdf = new jsPDF({
             orientation: 'portrait',
@@ -322,22 +372,65 @@ const BillingTerminal: React.FC = () => {
             format: [pdfWidth, contentHeight]
           });
           customPdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, contentHeight);
-          customPdf.save(`${invoiceData?.invoiceNo || 'invoice'}.pdf`);
-          setIsPrinting(false);
-          showAlert("PDF downloaded.", "success");
-          return;
+          return customPdf.output('blob'); // Return blob for dynamic sizing
         } else {
-          // Shorter than A4? Place at top.
           pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, contentHeight);
         }
       }
 
-      pdf.save(`${invoiceData?.invoiceNo || 'invoice'}.pdf`);
-      showAlert("PDF downloaded successfully.", "success");
+      return pdf.output('blob');
 
     } catch (error) {
       console.error("PDF Generation Error:", error);
       showAlert("PDF error. Try using the browser print option (Ctrl+P).", "error");
+      return null;
+    }
+  };
+
+  const handlePrint = async () => {
+    setIsPrinting(true);
+    const pdfBlob = await generateInvoicePDF();
+    if (pdfBlob) {
+      const url = URL.createObjectURL(pdfBlob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `Invoice_${invoiceData?.invoiceNo || 'document'}.pdf`;
+      a.click();
+      URL.revokeObjectURL(url);
+      showAlert("PDF downloaded successfully.", "success");
+    }
+    setIsPrinting(false);
+  };
+
+  const handleWhatsAppShare = async () => {
+    if (!invoiceData) return;
+    setIsPrinting(true);
+
+    try {
+      const pdfBlob = await generateInvoicePDF();
+      if (!pdfBlob) throw new Error("Failed to generate PDF");
+
+      // Upload to Supabase Storage
+      const fileName = `Invoice_${invoiceData.invoiceNo}_${Date.now()}.pdf`;
+      const publicUrl = await uploadInvoicePDF(pdfBlob, fileName);
+
+      if (!publicUrl) throw new Error("Failed to upload PDF");
+
+      const rawPhone = invoiceData.customer.phone || '';
+      const phone = rawPhone.replace(/\D/g, '');
+      const targetPhone = phone.length === 10 ? `91${phone}` : phone;
+
+      const text = `Hello ${invoiceData.customer.name},\n\nHere is your invoice *${invoiceData.invoiceNo}* for *₹${formatCurrency(invoiceData.totalAmount)}*.\n\nYou can view and download it here: ${publicUrl}\n\nThank you for your business!`;
+
+      // Open WhatsApp
+      const waUrl = `https://wa.me/${targetPhone}?text=${encodeURIComponent(text)}`;
+      window.open(waUrl, '_blank');
+
+      showAlert("Invoice Link Generated & WhatsApp Opened!", "success");
+
+    } catch (e) {
+      console.error("Share Error:", e);
+      showAlert("Failed to share invoice.", "error");
     } finally {
       setIsPrinting(false);
     }
@@ -376,6 +469,34 @@ const BillingTerminal: React.FC = () => {
             >
               {isPrinting ? 'Generating...' : 'Download PDF 🖨️'}
             </button>
+            <button
+              onClick={handleWhatsAppShare}
+              className="w-full sm:w-auto bg-green-500 text-white px-6 py-3 rounded-2xl hover:bg-green-600 font-black shadow-xl shadow-green-200 transition-all active:scale-95 flex items-center justify-center gap-2"
+            >
+              WhatsApp 💬
+            </button>
+            {invoiceData.totalTaxable > 500 && (
+              <button
+                onClick={() => {
+                  if (!validateGSTIN(invoiceData.customer.gstin)) {
+                    showAlert("Invalid Information: Customer GSTIN format is incorrect.", "error");
+                    return;
+                  }
+                  const json = generateEWayBillJSON(invoiceData, firm.gstin);
+                  const blob = new Blob([JSON.stringify(json, null, 2)], { type: 'application/json' });
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement('a');
+                  a.href = url;
+                  a.download = `eway_bill_${invoiceData.invoiceNo}.json`;
+                  a.click();
+                  logActivity(user?.email || 'System', 'EXPORT EWAY', `Exported JSON for ${invoiceData.invoiceNo}`);
+                  showAlert("E-Way Bill JSON downloaded!", "success");
+                }}
+                className="w-full sm:w-auto bg-amber-500 text-white px-6 py-3 rounded-2xl hover:bg-amber-600 font-black shadow-xl shadow-amber-200 transition-all active:scale-95 flex items-center justify-center gap-2"
+              >
+                Export JSON 📄
+              </button>
+            )}
           </div>
         </div>
 

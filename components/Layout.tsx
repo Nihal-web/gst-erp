@@ -25,6 +25,7 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     { to: '/billing', label: 'Terminal / POS', icon: '🧾', roles: [UserRole.ADMIN, UserRole.SALES, UserRole.PLATFORM_ADMIN] },
     { to: '/customers', label: 'Client Base', icon: '👥', roles: [UserRole.ADMIN, UserRole.SALES, UserRole.ACCOUNTANT, UserRole.PLATFORM_ADMIN] },
     { to: '/inventory', label: 'Warehouse', icon: '📦', roles: [UserRole.ADMIN, UserRole.PLATFORM_ADMIN] },
+    { to: '/team', label: 'Team & Roles', icon: '🛡️', roles: [UserRole.ADMIN, UserRole.PLATFORM_ADMIN] },
     { to: '/settings', label: 'Shop Config', icon: '⚙️', roles: [UserRole.ADMIN, UserRole.PLATFORM_ADMIN] },
     { to: '/reports', label: 'Intelligence', icon: '📈', roles: [UserRole.ADMIN, UserRole.ACCOUNTANT, UserRole.PLATFORM_ADMIN] },
   ];

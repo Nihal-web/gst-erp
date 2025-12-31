@@ -2,23 +2,30 @@ import React, { useState } from 'react';
 import { useApp } from '../AppContext';
 import { formatCurrency } from '../utils/helpers';
 import { Product, Warehouse } from '../types';
-import { fetchHSNDetails, HSNSuggestion } from '../services/geminiService';
+import { fetchHSNDetails, scanInvoiceImage, HSNSuggestion, InvoiceScanResult } from '../services/geminiService';
+import { logActivity } from '../services/auditService';
+import { useAuth } from '../AuthContext';
+import BulkImport from './BulkImport';
 
 const Inventory: React.FC = () => {
   const { products, stockLogs, showAlert, updateProduct, addProduct, adjustStock, warehouses, addWarehouse, deleteWarehouse, deleteProduct } = useApp();
+  const { user } = useAuth();
   const [showAddModal, setShowAddModal] = useState(false);
+  const [showImportModal, setShowImportModal] = useState(false);
   const [showWarehouseModal, setShowWarehouseModal] = useState(false);
   const [showAdjustModal, setShowAdjustModal] = useState<Product | null>(null);
   const [viewTab, setViewTab] = useState<'warehouse' | 'history'>('warehouse');
   const [selectedWarehouseId, setSelectedWarehouseId] = useState<string>('all');
+
   const [isFetchingHSN, setIsFetchingHSN] = useState(false);
+  const [isScanning, setIsScanning] = useState(false);
   const [aiSuggestions, setAiSuggestions] = useState<HSNSuggestion[]>([]);
 
   const [adjustData, setAdjustData] = useState({ quantity: 0, reason: 'Stock correction' });
 
   // New Product State
   const [newProduct, setNewProduct] = useState<Partial<Product>>({
-    name: '', productName: '', description: '', type: 'GOODS', hsn: '', rate: 0, unit: 'NOS', stock: 0, gstPercent: 18, warehouseId: '', alertThreshold: 10, packagingUnits: []
+    name: '', productName: '', description: '', type: 'GOODS', hsn: '', barcode: '', rate: 0, unit: 'NOS', stock: 0, gstPercent: 18, warehouseId: '', alertThreshold: 10, packagingUnits: []
   });
 
   // Temp state for adding a packaging unit
@@ -69,12 +76,46 @@ const Inventory: React.FC = () => {
   };
 
   const applySuggestion = (s: HSNSuggestion) => {
-    // Extract number from string rate e.g. "18%" -> 18, "0% (Exempt)" -> 0
-    const rateMatch = s.gstRate.match(/(\d+(\.\d+)?)/);
-    const rate = rateMatch ? parseFloat(rateMatch[0]) : 0;
+    // Prefer strict number from AI, fallback to parsing "18%" string
+    const rate = s.gst_rate_number !== undefined ? s.gst_rate_number : (parseFloat(s.gstRate) || 0);
 
     setNewProduct(prev => ({ ...prev, hsn: s.hsnCode, gstPercent: rate }));
     setAiSuggestions([]); // clear suggestions
+    // Optional: Alert the user of the auto-selection
+    showAlert(`Auto-selected GST: ${rate}%`, "info");
+  };
+
+
+
+  const handleSmartScan = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsScanning(true);
+    showAlert("Analyzing Invoice Image... 🧾", "info");
+
+    try {
+      const result = await scanInvoiceImage(file);
+      if (result) {
+        setNewProduct(prev => ({
+          ...prev,
+          productName: result.productName,
+          name: result.desc || result.productName,
+          hsn: result.hsn,
+          rate: result.rate,
+          stock: result.qty || prev.stock,
+          gstPercent: result.tax
+        }));
+        showAlert("Auto-filled details from Invoice!", "success");
+      } else {
+        showAlert("Could not extract details clearly.", "error");
+      }
+    } catch (err) {
+      console.error(err);
+      showAlert("Smart Scan failed.", "error");
+    } finally {
+      setIsScanning(false);
+    }
   };
 
   const handleAddWarehouse = (e: React.FormEvent) => {
@@ -99,7 +140,7 @@ const Inventory: React.FC = () => {
     }
 
     const product: Product = {
-      id: window.crypto.randomUUID() || Math.random().toString(36).substr(2, 9),
+      id: newProduct.id || window.crypto.randomUUID() || Math.random().toString(36).substr(2, 9),
       name: newProduct.name || newProduct.productName!,
       productName: newProduct.productName!,
       description: newProduct.description || '',
@@ -111,11 +152,21 @@ const Inventory: React.FC = () => {
       gstPercent: Number(newProduct.gstPercent) || 18,
       warehouseId: newProduct.warehouseId,
       alertThreshold: Number(newProduct.alertThreshold) || 10,
-      packagingUnits: newProduct.packagingUnits || []
+      packagingUnits: newProduct.packagingUnits || [],
+      barcode: newProduct.barcode || ''
     };
-    addProduct(product);
+
+    if (newProduct.id) {
+      updateProduct(product);
+      logActivity(user?.email || 'System', 'UPDATE PRODUCT', `Updated details for ${product.name}`);
+      showAlert("Product updated successfully!", "success");
+    } else {
+      addProduct(product);
+      logActivity(user?.email || 'System', 'CREATE PRODUCT', `Added ${product.name} to inventory`);
+    }
+
     setShowAddModal(false);
-    setNewProduct({ name: '', productName: '', description: '', type: 'GOODS', hsn: '', rate: 0, unit: 'NOS', stock: 0, gstPercent: 18, warehouseId: '', alertThreshold: 10, packagingUnits: [] });
+    setNewProduct({ name: '', productName: '', description: '', type: 'GOODS', hsn: '', barcode: '', rate: 0, unit: 'NOS', stock: 0, gstPercent: 18, warehouseId: '', alertThreshold: 10, packagingUnits: [] });
   };
 
   const filteredProducts = selectedWarehouseId === 'all'
@@ -132,6 +183,9 @@ const Inventory: React.FC = () => {
         <div className="flex flex-col sm:flex-row gap-4 w-full sm:w-auto">
           <button onClick={() => setShowWarehouseModal(true)} className="px-4 py-3 bg-indigo-50 text-indigo-600 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-indigo-100 transition-all">
             Manage Warehouses 🏭
+          </button>
+          <button onClick={() => setShowImportModal(true)} className="px-4 py-3 bg-emerald-50 text-emerald-600 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-emerald-100 transition-all border border-emerald-100">
+            Import CSV 📂
           </button>
           <button onClick={() => setShowAddModal(true)} className="bg-blue-600 text-white px-8 py-3 lg:py-3.5 rounded-2xl hover:bg-blue-700 font-black shadow-xl shadow-blue-100 transition-all active:scale-95 whitespace-nowrap">
             + Add Asset
@@ -221,8 +275,15 @@ const Inventory: React.FC = () => {
                       </td>
                       <td className="px-6 lg:px-8 py-4 lg:py-6 text-right">
                         <div className="flex gap-2 justify-end lg:opacity-0 lg:group-hover:opacity-100 transition-opacity">
+                          <button onClick={() => {
+                            setNewProduct(product);
+                            setShowAddModal(true);
+                          }} className="px-3 py-1.5 bg-blue-50 text-blue-600 text-[10px] font-black rounded-lg hover:bg-blue-100">Edit</button>
                           <button onClick={() => setShowAdjustModal(product)} className="px-3 py-1.5 bg-slate-100 text-slate-600 text-[10px] font-black rounded-lg hover:bg-slate-200">Adjust</button>
-                          <button onClick={() => deleteProduct(product.id)} className="px-3 py-1.5 bg-red-50 text-red-600 text-[10px] font-black rounded-lg hover:bg-red-100">Delete</button>
+                          <button onClick={() => {
+                            deleteProduct(product.id);
+                            logActivity(user?.email || 'System', 'DELETE PRODUCT', `Removed ${product.name} from inventory`);
+                          }} className="px-3 py-1.5 bg-red-50 text-red-600 text-[10px] font-black rounded-lg hover:bg-red-100">Delete</button>
                         </div>
                       </td>
                     </tr>
@@ -292,8 +353,12 @@ const Inventory: React.FC = () => {
         showAddModal && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm overflow-hidden">
             <div className="bg-white w-full max-w-lg rounded-3xl lg:rounded-[2.5rem] shadow-2xl flex flex-col max-h-[90vh] animate-in zoom-in-95">
-              <div className="p-6 lg:p-10 border-b border-slate-50 flex-shrink-0">
+              <div className="p-6 lg:p-10 border-b border-slate-50 flex-shrink-0 flex justify-between items-center">
                 <h3 className="text-xl lg:text-2xl font-black text-slate-800">New Asset Registration</h3>
+                <label className={`cursor-pointer px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest transition-all flex items-center gap-2 ${isScanning ? 'bg-slate-100 text-slate-400' : 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-lg hover:shadow-xl hover:scale-105'}`}>
+                  <input type="file" accept="image/*" className="hidden" onChange={handleSmartScan} disabled={isScanning} />
+                  {isScanning ? 'Scanning...' : '📷 Smart Scan'}
+                </label>
               </div>
 
               <div className="flex-1 overflow-y-auto p-6 lg:p-10 no-scrollbar">
@@ -340,7 +405,7 @@ const Inventory: React.FC = () => {
 
                     {/* AI Suggestions Table UI */}
                     {aiSuggestions.length > 0 && (
-                      <div className="absolute top-full left-0 right-0 bg-slate-900 text-white rounded-xl shadow-2xl z-50 mt-2 overflow-hidden animate-in fade-in slide-in-from-top-2 border border-slate-700">
+                      <div className="absolute top-full left-0 right-0 bg-slate-900 text-white rounded-xl shadow-2xl z-50 mt-2 max-h-60 overflow-y-auto no-scrollbar animate-in fade-in slide-in-from-top-2 border border-slate-700">
                         <div className="bg-gradient-to-r from-purple-600 to-blue-600 px-4 py-2 flex justify-between items-center">
                           <span className="text-[10px] font-black uppercase tracking-widest text-white">✨ AI Recommendations</span>
                           <button type="button" onClick={() => setAiSuggestions([])} className="text-white hover:text-red-200">✕</button>
@@ -379,6 +444,22 @@ const Inventory: React.FC = () => {
                       <option value="NOS">NOS</option><option value="PCS">PCS</option><option value="KG">KG</option><option value="SET">SET</option>
                     </select>
                   </div>
+
+                  {/* GST Rate Dropdown */}
+                  <div>
+                    <label className="text-[9px] font-black uppercase text-blue-600 mb-1 block">GST Rate (%)</label>
+                    <select
+                      value={newProduct.gstPercent}
+                      onChange={e => setNewProduct({ ...newProduct, gstPercent: Number(e.target.value) })}
+                      className="w-full bg-blue-50 border border-blue-200 text-blue-700 rounded-xl py-2.5 lg:py-3 px-4 font-black outline-none text-sm ring-1 ring-blue-500 focus:ring-2"
+                    >
+                      <option value={0}>0% (Exempt)</option>
+                      <option value={5}>5%</option>
+                      <option value={12}>12%</option>
+                      <option value={18}>18% (Standard)</option>
+                      <option value={28}>28% (Luxury)</option>
+                    </select>
+                  </div>
                   <div>
                     <label className="text-[9px] font-black uppercase text-slate-500 mb-1 block">Rate</label>
                     <input type="number" value={newProduct.rate} onChange={e => setNewProduct({ ...newProduct, rate: Number(e.target.value) })} className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2.5 lg:py-3 px-4 font-bold outline-none text-sm" />
@@ -390,6 +471,11 @@ const Inventory: React.FC = () => {
                   <div>
                     <label className="text-[9px] font-black uppercase text-slate-500 mb-1 block">Low Stock Alert</label>
                     <input type="number" value={newProduct.alertThreshold} onChange={e => setNewProduct({ ...newProduct, alertThreshold: Number(e.target.value) })} className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2.5 lg:py-3 px-4 font-bold outline-none text-sm" />
+                  </div>
+
+                  <div className="sm:col-span-2">
+                    <label className="text-[9px] font-black uppercase text-slate-500 mb-1 block">Barcode / Scan Code <span className="text-slate-400 font-normal normal-case">(Optional)</span></label>
+                    <input type="text" value={newProduct.barcode} onChange={e => setNewProduct({ ...newProduct, barcode: e.target.value })} className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2.5 lg:py-3 px-4 font-bold outline-none text-sm font-mono tracking-wider" placeholder="Scan or type barcode... (Optional)" />
                   </div>
 
                   <div className="sm:col-span-2 pt-4 border-t border-slate-100 mt-2">
@@ -443,6 +529,9 @@ const Inventory: React.FC = () => {
           </div>
         )
       }
+
+      {/* Bulk Import Modal */}
+      {showImportModal && <BulkImport onClose={() => setShowImportModal(false)} />}
     </div >
   );
 };

@@ -12,6 +12,7 @@ import Customers from './components/Customers';
 import Settings from './components/Settings';
 import Login from './components/Login';
 import Signup from './components/Signup';
+import Team from './components/Team';
 import Reports from './components/Reports';
 import { UserRole } from './types';
 
@@ -71,6 +72,12 @@ const AppRoutes = () => {
       <Route path="/settings" element={
         <ProtectedRoute roles={[UserRole.ADMIN]}>
           <Layout><Settings /></Layout>
+        </ProtectedRoute>
+      } />
+
+      <Route path="/team" element={
+        <ProtectedRoute roles={[UserRole.ADMIN, UserRole.PLATFORM_ADMIN]}>
+          <Layout><Team /></Layout>
         </ProtectedRoute>
       } />
 

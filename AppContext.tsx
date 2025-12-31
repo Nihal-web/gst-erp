@@ -8,7 +8,7 @@ import {
   fetchSettings, saveSettings,
   fetchGlobalStats, fetchStockLogs, adjustStockApi, updateUserProfile as updateUserProfileApi,
   fetchWarehouses, createWarehouse as createWarehouseApi, deleteWarehouse as deleteWarehouseApi,
-  updateCustomerApi, deleteCustomerApi, fetchCustomerInvoices
+  updateCustomerApi, deleteCustomerApi, fetchCustomerInvoices, updateProductApi, deleteProductApi
 } from './services/apiService';
 import { INITIAL_PRODUCTS, INITIAL_CUSTOMERS, DEFAULT_FIRM_SETTINGS } from './constants';
 import { useAuth } from './AuthContext';
@@ -128,8 +128,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const created = await createProduct(product);
       setProducts(prev => [created, ...prev]);
       showAlert(`Product ${product.name} saved to Warehouse.`, 'success');
-    } catch (e) {
-      showAlert("Failed to save product.", "error");
+    } catch (e: any) {
+      console.error("Add Product Error:", e);
+      showAlert(`Failed to save product: ${e.message || 'Unknown error'}`, "error");
     }
   };
 
@@ -179,14 +180,26 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-  const updateProduct = (product: Product) => {
-    setProducts(prev => prev.map(p => (p.id === product.id ? product : p)));
-    showAlert('Inventory updated locally.', 'success');
+  const updateProduct = async (product: Product) => {
+    try {
+      await updateProductApi(product);
+      setProducts(prev => prev.map(p => (p.id === product.id ? product : p)));
+      showAlert('Inventory updated successfully.', 'success');
+    } catch (e) {
+      console.error(e);
+      showAlert('Failed to update product in database.', 'error');
+    }
   };
 
-  const deleteProduct = (id: string) => {
-    setProducts(prev => prev.filter(p => p.id !== id));
-    showAlert('Product removed from inventory.', 'info');
+  const deleteProduct = async (id: string) => {
+    try {
+      await deleteProductApi(id);
+      setProducts(prev => prev.filter(p => p.id !== id));
+      showAlert('Product removed from inventory.', 'info');
+    } catch (e) {
+      console.error(e);
+      showAlert('Failed to delete product.', 'error');
+    }
   };
 
   const updateCustomer = async (customer: Customer) => {
