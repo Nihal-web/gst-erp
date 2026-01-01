@@ -3,7 +3,7 @@ const crypto = require('crypto');
 const db = require('../db');
 const auth = require('../middleware/auth');
 const tenant = require('../middleware/tenant');
-const { GSTRService } = require('../../services/gstrService');
+const { GSTRService } = require('../services/gstrService');
 
 const router = express.Router();
 
