@@ -1,7 +1,7 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../AuthContext';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, Link, useSearchParams } from 'react-router-dom';
 
 const Login: React.FC = () => {
   const [email, setEmail] = useState('');
@@ -9,8 +9,17 @@ const Login: React.FC = () => {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [success, setSuccess] = useState('');
   const { login } = useAuth();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+
+  useEffect(() => {
+    const message = searchParams.get('message');
+    if (message === 'password-updated') {
+      setSuccess('Password updated successfully! Please log in with your new password.');
+    }
+  }, [searchParams]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -40,6 +49,12 @@ const Login: React.FC = () => {
         {error && (
           <div className="mb-6 p-4 bg-red-50 text-red-600 rounded-2xl text-xs font-bold border border-red-100 animate-in fade-in slide-in-from-top-2">
             ⚠️ {error}
+          </div>
+        )}
+
+        {success && (
+          <div className="mb-6 p-4 bg-green-50 text-green-600 rounded-2xl text-xs font-bold border border-green-100 animate-in fade-in slide-in-from-top-2">
+            ✅ {success}
           </div>
         )}
 
@@ -84,7 +99,12 @@ const Login: React.FC = () => {
           </button>
         </form>
 
-        <div className="mt-10 pt-8 border-t border-slate-50 text-center">
+        <div className="mt-6 text-center">
+          <Link to="/forgot-password" className="text-blue-600 font-black text-sm hover:underline">
+            Forgot Password?
+          </Link>
+        </div>
+        <div className="mt-4 pt-8 border-t border-slate-50 text-center">
           <p className="text-slate-400 text-sm font-bold">New Shop Owner?</p>
           <Link to="/signup" className="text-blue-600 font-black text-sm hover:underline mt-1 block">
             Register your Firm →

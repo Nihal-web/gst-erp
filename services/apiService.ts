@@ -141,13 +141,13 @@ export const fetchCustomerInvoices = async (customerId: string): Promise<Invoice
     const { data, error } = await supabase
         .from('invoices')
         .select(`
-            *,
-            customer:customers!invoices_customer_id_fkey ( name, gstin, address, state, state_code ),
-            items:invoice_items!invoice_items_invoice_id_fkey (
-                product_id, quantity, rate, gst_percent, amount,
-                product:inventory!invoice_items_product_id_fkey ( name, product_name, hsn, sac, unit )
-            )
-        `)
+      *,
+      customer:customers!invoices_customer_id_fkey ( name, gstin, address, state, state_code ),
+      items:invoice_items!invoice_items_invoice_id_fkey (
+        product_id, quantity, rate, gst_percent, amount,
+        product:inventory!invoice_items_product_id_fkey ( name, product_name, hsn, sac, unit )
+      )
+    `)
         .eq('customer_id', customerId)
         .order('created_at', { ascending: false });
 
@@ -295,13 +295,13 @@ export const fetchInvoices = async (): Promise<Invoice[]> => {
     const { data, error } = await supabase
         .from('invoices')
         .select(`
-            *,
-            customer:customers!invoices_customer_id_fkey ( name, gstin, address, state, state_code ),
-            items:invoice_items!invoice_items_invoice_id_fkey (
-                product_id, quantity, rate, gst_percent, amount,
-                product:inventory!invoice_items_product_id_fkey ( name, product_name, hsn, sac, unit )
-            )
-        `)
+      *,
+      customer:customers!invoices_customer_id_fkey ( name, gstin, address, state, state_code ),
+      items:invoice_items!invoice_items_invoice_id_fkey (
+        product_id, quantity, rate, gst_percent, amount,
+        product:inventory!invoice_items_product_id_fkey ( name, product_name, hsn, sac, unit )
+      )
+    `)
         .eq('tenant_id', user.id)
         .order('created_at', { ascending: false });
 
@@ -316,13 +316,13 @@ export const fetchInvoices = async (): Promise<Invoice[]> => {
         // relationship is aliased as 'customer', might be object or array
         const custData = Array.isArray(row.customer) ? row.customer[0] : row.customer;
 
-        return {
+        const invoice = {
             id: row.id,
             invoiceNo: row.invoice_number,
             type: (row.status === 'generated' ? 'GOODS' : row.status) as any,
             date: row.created_at,
             totalTaxable: (row.total_amount || 0) - (row.tax_amount || 0),
-            igst: 0, cgst: 0, sgst: 0,
+            igst: row.igst || 0, cgst: row.cgst || 0, sgst: row.sgst || 0,
             totalAmount: row.total_amount,
             isPaid: false,
             customer: {
@@ -344,6 +344,7 @@ export const fetchInvoices = async (): Promise<Invoice[]> => {
                 gstPercent: item.gst_percent
             }))
         } as unknown as Invoice;
+        return invoice;
     });
 };
 
@@ -445,7 +446,6 @@ export const fetchGlobalStats = async () => {
     // Platform Admin: Fetch stats from all tables
     const { data: users } = await supabase.from('users').select('*');
     const { data: invoices } = await supabase.from('invoices').select('total_amount, tenant_id');
-    const { data: settings } = await supabase.from('system_settings').select('*');
 
     const totalRevenue = invoices?.reduce((sum, inv: any) => sum + (inv.total_amount || 0), 0) || 0;
 
@@ -474,32 +474,13 @@ export const fetchGlobalStats = async () => {
         invoiceCount: tenantMetrics[u.id]?.count || 0
     }));
 
-    // Find unique tenants from invoices to detect "Ghost" Tenants
-    const invoiceTenantIds = Object.keys(tenantMetrics);
-
-    const ghostTenants: any[] = [];
-    invoiceTenantIds.forEach(tid => {
-        if (tid && !allUsers.find(u => u.id === tid)) {
-            ghostTenants.push({
-                id: tid,
-                name: 'Unknown Operator',
-                email: 'sync@needed.com',
-                role: 'ADMIN',
-                shopName: `Ghost Tenant (${tid.substring(0, 8)})`,
-                status: 'active',
-                plan: 'pro',
-                isGhost: true,
-                revenue: tenantMetrics[tid]?.revenue || 0,
-                invoiceCount: tenantMetrics[tid]?.count || 0
-            });
-        }
-    });
-
-    const combinedUsers = [...allUsers, ...ghostTenants];
-    const shopCount = combinedUsers.filter(u => u.role === 'ADMIN' || u.isGhost).length;
+    // Ghost tenant detection disabled - showing only registered users
+    const combinedUsers = allUsers;
+    const shopCount = combinedUsers.filter(u => u.role === 'ADMIN').length;
 
     // Convert settings array to object map
     const systemSettings: any = {};
+    const { data: settings } = await supabase.from('system_settings').select('*');
     settings?.forEach((s: any) => systemSettings[s.name] = (s.value === 'true' || s.value === true));
 
     return {
@@ -582,8 +563,8 @@ export const deleteTenantRecord = async (tenantId: string, entity: string, id: s
 
 export const deleteUser = async (userId: string) => {
     // Platform Admin Only
-    // This removes the user record from public.users. 
-    // It cascades to other tables if Foreign Keys are set to CASCADE, 
+    // This removes the user record from public.users.
+    // It cascades to other tables if Foreign Keys are set to CASCADE,
     // otherwise we might need to delete related data first.
     // Assuming schema has ON DELETE CASCADE for tenant_id fkeys.
     const { error } = await supabase.from('users').delete().eq('id', userId);
@@ -654,3 +635,85 @@ export const uploadInvoicePDF = async (blob: Blob, fileName: string): Promise<st
     return data.publicUrl;
 };
 
+// --- GSTR OPERATIONS ---
+export const fetchGSTRReturns = async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) throw new Error("No user");
+
+    const { data: gstr1Data, error: gstr1Error } = await supabase
+        .from('gstr1_returns')
+        .select('*')
+        .eq('tenant_id', user.id)
+        .order('return_period', { ascending: false });
+
+    if (gstr1Error) throw gstr1Error;
+
+    const { data: gstr3bData, error: gstr3bError } = await supabase
+        .from('gstr3b_returns')
+        .select('*')
+        .eq('tenant_id', user.id)
+        .order('return_period', { ascending: false });
+
+    if (gstr3bError) throw gstr3bError;
+
+    return {
+        gstr1: gstr1Data || [],
+        gstr3b: gstr3bData || []
+    };
+};
+
+export const generateGSTR1 = async (returnPeriod: string) => {
+    const response = await fetch('/api/gstr1/generate', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ returnPeriod }),
+    });
+
+    if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to generate GSTR-1');
+    }
+
+    return response.json();
+};
+
+export const generateGSTR3B = async (returnPeriod: string) => {
+    const response = await fetch('/api/gstr3b/generate', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ returnPeriod }),
+    });
+
+    if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to generate GSTR-3B');
+    }
+
+    return response.json();
+};
+
+export const fetchGSTR1Details = async (returnPeriod: string) => {
+    const response = await fetch(`/api/gstr1/${returnPeriod}`);
+
+    if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to fetch GSTR-1 details');
+    }
+
+    return response.json();
+};
+
+export const fetchGSTR3BDetails = async (returnPeriod: string) => {
+    const response = await fetch(`/api/gstr3b/${returnPeriod}`);
+
+    if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to fetch GSTR-3B details');
+    }
+
+    return response.json();
+};

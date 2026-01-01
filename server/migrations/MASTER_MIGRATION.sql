@@ -68,6 +68,15 @@ CREATE TABLE IF NOT EXISTS warehouses (
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- 1.5 Activity Logs
+CREATE TABLE IF NOT EXISTS activity_logs (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_email TEXT,
+  action TEXT,
+  details TEXT,
+  timestamp TIMESTAMPTZ DEFAULT now()
+);
+
 -- ---------------------------------------------------------
 -- 2. ADD MISSING COLUMNS
 -- ---------------------------------------------------------
@@ -85,6 +94,17 @@ ALTER TABLE inventory ADD COLUMN IF NOT EXISTS warehouse_id UUID REFERENCES ware
 
 -- Invoices
 ALTER TABLE invoices ADD COLUMN IF NOT EXISTS status VARCHAR(20) DEFAULT 'draft';
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS type VARCHAR(20) DEFAULT 'GOODS';
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS date DATE;
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS total_taxable DECIMAL(15,2) DEFAULT 0;
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS igst DECIMAL(15,2) DEFAULT 0;
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS cgst DECIMAL(15,2) DEFAULT 0;
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS sgst DECIMAL(15,2) DEFAULT 0;
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS is_paid BOOLEAN DEFAULT false;
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS is_reverse_charge BOOLEAN DEFAULT false;
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS export_type VARCHAR(20);
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS shipping_bill_no VARCHAR(50);
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS shipping_bill_date DATE;
 ALTER TABLE invoices ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
 
 -- Users

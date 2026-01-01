@@ -13,6 +13,7 @@ import {
   deleteTenantRecord,
   deleteUser
 } from '../services/apiService';
+import { fetchAuditLogs } from '../services/auditService';
 import { FirmSettings } from '../types';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -24,7 +25,7 @@ const PlatformAdmin: React.FC = () => {
   const { switchRole, user } = useAuth();
 
   // States
-  const [activeTab, setActiveTab] = React.useState<'overview' | 'tenants' | 'config'>('overview');
+  const [activeTab, setActiveTab] = React.useState<'overview' | 'tenants' | 'users' | 'reports' | 'audit' | 'health' | 'config'>('overview');
   const [editingShop, setEditingShop] = React.useState<string | null>(null);
   const [shopSettings, setShopSettings] = React.useState<FirmSettings | null>(null);
   const [isSaving, setIsSaving] = React.useState(false);
@@ -34,6 +35,10 @@ const PlatformAdmin: React.FC = () => {
   const [tenantInventory, setTenantInventory] = React.useState<any[]>([]);
   const [tenantInvoices, setTenantInvoices] = React.useState<any[]>([]);
   const [isLoadingTenant, setIsLoadingTenant] = React.useState(false);
+
+  // New tab states
+  const [auditLogs, setAuditLogs] = React.useState<any[]>([]);
+  const [isLoadingAudit, setIsLoadingAudit] = React.useState(false);
 
   if (!globalStats) return <div className="p-10 text-slate-400 font-black tracking-widest animate-pulse flex flex-col items-center justify-center min-h-[60vh] gap-4">
     <div className="w-16 h-16 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
@@ -136,6 +141,8 @@ const PlatformAdmin: React.FC = () => {
     }
   };
 
+
+
   return (
     <div className="space-y-6 lg:space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
       <div className="flex flex-col sm:flex-row sm:justify-between sm:items-end gap-6 border-b border-slate-100 pb-8">
@@ -143,10 +150,14 @@ const PlatformAdmin: React.FC = () => {
           <h2 className="text-2xl lg:text-3xl font-black text-slate-800 tracking-tight">Master Control</h2>
           <p className="text-slate-400 text-sm font-medium tracking-tight">Multi-tenant orchestration layer.</p>
         </div>
-        <div className="flex gap-1 bg-slate-100 p-1.5 rounded-2xl shadow-inner">
-          <button onClick={() => setActiveTab('overview')} className={`px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'overview' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>Overview</button>
-          <button onClick={() => setActiveTab('tenants')} className={`px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'tenants' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>Tenants</button>
-          <button onClick={() => setActiveTab('config')} className={`px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'config' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>Config</button>
+        <div className="flex gap-1 bg-slate-100 p-1.5 rounded-2xl shadow-inner overflow-x-auto">
+          <button onClick={() => setActiveTab('overview')} className={`px-4 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'overview' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>Overview</button>
+          <button onClick={() => setActiveTab('tenants')} className={`px-4 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'tenants' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>Tenants</button>
+          <button onClick={() => setActiveTab('users')} className={`px-4 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'users' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>Users</button>
+          <button onClick={() => setActiveTab('reports')} className={`px-4 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'reports' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>Reports</button>
+          <button onClick={() => setActiveTab('audit')} className={`px-4 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'audit' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>Audit</button>
+          <button onClick={() => setActiveTab('health')} className={`px-4 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'health' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>Health</button>
+          <button onClick={() => setActiveTab('config')} className={`px-4 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'config' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>Config</button>
         </div>
       </div>
 

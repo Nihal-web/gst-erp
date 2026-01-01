@@ -12,6 +12,8 @@ import Customers from './components/Customers';
 import Settings from './components/Settings';
 import Login from './components/Login';
 import Signup from './components/Signup';
+import ForgetPassword from './components/ForgetPassword';
+import ResetPassword from './components/ResetPassword';
 import Team from './components/Team';
 import Reports from './components/Reports';
 import { UserRole } from './types';
@@ -36,6 +38,8 @@ const AppRoutes = () => {
     <Routes>
       <Route path="/login" element={<Login />} />
       <Route path="/signup" element={<Signup />} />
+      <Route path="/forgot-password" element={<ForgetPassword />} />
+      <Route path="/reset-password" element={<ResetPassword />} />
 
       <Route path="/" element={
         <ProtectedRoute roles={[UserRole.ADMIN, UserRole.ACCOUNTANT, UserRole.PLATFORM_ADMIN]}>

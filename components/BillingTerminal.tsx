@@ -84,7 +84,7 @@ const BillingTerminal: React.FC = () => {
       const currentTime = Date.now();
       const char = e.key;
 
-      if (currentTime - lastKeyTime > 100) {
+      if (currentTime - lastKeyTime > 300) {
         buffer = ''; // Reset buffer if too slow (manual typing)
       }
       lastKeyTime = currentTime;
@@ -248,19 +248,52 @@ const BillingTerminal: React.FC = () => {
     const totalTaxable = items.reduce((sum, item) => sum + item.taxableValue, 0);
     const isInterState = selectedCustomer.stateCode !== firm.gstin.substring(0, 2) || invoiceType === InvoiceType.EXPORT;
 
-    let igst = 0, cgst = 0, sgst = 0;
-    const totalGst = items.reduce((sum, item) => sum + (item.taxableValue * (item.gstPercent / 100)), 0);
+    let totalIgst = 0, totalCgst = 0, totalSgst = 0;
 
+    // Calculate GST per item (line-item wise calculation)
     if (invoiceType === InvoiceType.EXPORT && exportType === 'WITHOUT_PAYMENT') {
-      // No tax
+      // No tax - all taxes remain 0
     } else if (isInterState) {
-      igst = totalGst;
+      // Inter-state: Apply IGST
+      totalIgst = items.reduce((sum, item) => {
+        const gstAmount = item.taxableValue * (item.gstPercent / 100);
+        return sum + Math.round(gstAmount * 100) / 100; // Round to 2 decimal places
+      }, 0);
     } else {
-      cgst = totalGst / 2;
-      sgst = totalGst / 2;
+      // Intra-state: Apply CGST + SGST (each half of GST rate)
+      const cgstSgstAmounts = items.reduce((acc, item) => {
+        const gstRate = item.gstPercent / 100;
+        const cgstAmount = item.taxableValue * (gstRate / 2);
+        const sgstAmount = item.taxableValue * (gstRate / 2);
+
+        // Round each tax component to 2 decimal places
+        acc.cgst += Math.round(cgstAmount * 100) / 100;
+        acc.sgst += Math.round(sgstAmount * 100) / 100;
+        return acc;
+      }, { cgst: 0, sgst: 0 });
+
+      totalCgst = cgstSgstAmounts.cgst;
+      totalSgst = cgstSgstAmounts.sgst;
     }
 
-    const totalAmount = totalTaxable + (invoiceType === InvoiceType.EXPORT && exportType === 'WITHOUT_PAYMENT' ? 0 : totalGst);
+    // Apply GST rounding rule: round to nearest rupee (0.50+ goes up)
+    const totalGst = totalIgst + totalCgst + totalSgst;
+    const roundedTotalGst = Math.round(totalGst);
+
+    // Adjust the difference to maintain tax proportions
+    const roundingDiff = roundedTotalGst - totalGst;
+    if (roundingDiff !== 0) {
+      if (isInterState) {
+        totalIgst += roundingDiff;
+      } else {
+        // Split rounding difference between CGST and SGST
+        const halfDiff = roundingDiff / 2;
+        totalCgst += halfDiff;
+        totalSgst += halfDiff;
+      }
+    }
+
+    const totalAmount = totalTaxable + roundedTotalGst;
 
     const currentYear = new Date().getFullYear();
     const typePrefix = invoiceType.charAt(0).toUpperCase();
@@ -276,9 +309,9 @@ const BillingTerminal: React.FC = () => {
       customer: selectedCustomer,
       items: items,
       totalTaxable,
-      igst: igst || undefined,
-      cgst: cgst || undefined,
-      sgst: sgst || undefined,
+      igst: totalIgst || undefined,
+      cgst: totalCgst || undefined,
+      sgst: totalSgst || undefined,
       totalAmount,
       isPaid: false,
       isReverseCharge: isReverseCharge,
@@ -521,7 +554,33 @@ const BillingTerminal: React.FC = () => {
     );
   }
 
-  const totalPayable = items.reduce((sum, item) => sum + (item.taxableValue * (1 + (invoiceType === InvoiceType.EXPORT && exportType === 'WITHOUT_PAYMENT' ? 0 : item.gstPercent / 100))), 0);
+  const calculateTotalPayable = () => {
+    const totalTaxable = items.reduce((sum, item) => sum + item.taxableValue, 0);
+    const isInterState = selectedCustomer ? selectedCustomer.stateCode !== firm.gstin.substring(0, 2) || invoiceType === InvoiceType.EXPORT : false;
+
+    if (invoiceType === InvoiceType.EXPORT && exportType === 'WITHOUT_PAYMENT') {
+      return totalTaxable;
+    }
+
+    let totalGst = 0;
+    if (isInterState) {
+      totalGst = items.reduce((sum, item) => {
+        const gstAmount = item.taxableValue * (item.gstPercent / 100);
+        return sum + Math.round(gstAmount * 100) / 100;
+      }, 0);
+    } else {
+      totalGst = items.reduce((sum, item) => {
+        const gstRate = item.gstPercent / 100;
+        const cgstAmount = item.taxableValue * (gstRate / 2);
+        const sgstAmount = item.taxableValue * (gstRate / 2);
+        return sum + (Math.round(cgstAmount * 100) / 100) + (Math.round(sgstAmount * 100) / 100);
+      }, 0);
+    }
+
+    return totalTaxable + Math.round(totalGst);
+  };
+
+  const totalPayable = calculateTotalPayable();
 
   return (
     <div className="space-y-6 lg:space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">

@@ -3,6 +3,7 @@ const crypto = require('crypto');
 const db = require('../db');
 const auth = require('../middleware/auth');
 const tenant = require('../middleware/tenant');
+const { GSTRService } = require('../../services/gstrService');
 
 const router = express.Router();
 
@@ -281,19 +282,7 @@ router.post('/invoices', async (req, res) => {
                 ]
             );
 
-            // Stock update logic
-            if (item.productId) {
-                await connection.query(
-                    'UPDATE inventory SET stock = stock - $1 WHERE id = $2 AND tenant_id = $3',
-                    [item.qty, item.productId, req.tenantId]
-                );
-
-                await connection.query(`
-                    INSERT INTO stock_logs (id, tenant_id, product_id, product_name, change_amt, reason, date)
-                    VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-                    [crypto.randomUUID(), req.tenantId, item.productId, item.productName, -item.qty, `Invoice ${inv.invoiceNo}`, inv.date]
-                );
-            }
+            // Note: Stock update is handled by frontend to account for conversion factors
         }
 
         await connection.commit();
@@ -304,6 +293,145 @@ router.post('/invoices', async (req, res) => {
         res.status(500).json({ error: 'Internal server error' });
     } finally {
         connection.release();
+    }
+});
+
+// --- GSTR OPERATIONS ---
+
+// Generate GSTR-1 from invoices
+router.post('/gstr1/generate', async (req, res) => {
+    try {
+        const { returnPeriod } = req.body;
+
+        if (!returnPeriod || !/^\d{6}$/.test(returnPeriod)) {
+            return res.status(400).json({ error: 'Valid return period (YYYYMM) is required' });
+        }
+
+        await GSTRService.generateGSTR1FromInvoices(req.tenantId, returnPeriod);
+        res.json({ message: 'GSTR-1 generated successfully' });
+    } catch (error) {
+        console.error('GSTR-1 Generation Error:', error);
+        res.status(500).json({ error: error.message || 'Failed to generate GSTR-1' });
+    }
+});
+
+// Generate GSTR-3B from GSTR-1
+router.post('/gstr3b/generate', async (req, res) => {
+    try {
+        const { returnPeriod } = req.body;
+
+        if (!returnPeriod || !/^\d{6}$/.test(returnPeriod)) {
+            return res.status(400).json({ error: 'Valid return period (YYYYMM) is required' });
+        }
+
+        await GSTRService.generateGSTR3BFromGSTR1(req.tenantId, returnPeriod);
+        res.json({ message: 'GSTR-3B generated successfully' });
+    } catch (error) {
+        console.error('GSTR-3B Generation Error:', error);
+        res.status(500).json({ error: error.message || 'Failed to generate GSTR-3B' });
+    }
+});
+
+// Get GSTR returns list
+router.get('/gstr/returns', async (req, res) => {
+    try {
+        const returns = await GSTRService.getGSTRReturns(req.tenantId);
+        res.json(returns);
+    } catch (error) {
+        console.error('GSTR Returns Fetch Error:', error);
+        res.status(500).json({ error: 'Failed to fetch GSTR returns' });
+    }
+});
+
+// Get GSTR-1 details
+router.get('/gstr1/:returnPeriod', async (req, res) => {
+    try {
+        const { returnPeriod } = req.params;
+
+        // Get return header
+        const returnQuery = await db.query(
+            'SELECT * FROM gstr1_returns WHERE tenant_id = $1 AND return_period = $2',
+            [req.tenantId, returnPeriod]
+        );
+
+        if (returnQuery.rows.length === 0) {
+            return res.status(404).json({ error: 'GSTR-1 return not found' });
+        }
+
+        const returnData = returnQuery.rows[0];
+
+        // Get section data
+        const [b2bData, b2clData, expData, b2csData, nilData, cdnrData] = await Promise.all([
+            db.query('SELECT * FROM gstr1_b2b WHERE gstr1_return_id = $1 ORDER BY invoice_date', [returnData.id]),
+            db.query('SELECT * FROM gstr1_b2cl WHERE gstr1_return_id = $1 ORDER BY invoice_date', [returnData.id]),
+            db.query('SELECT * FROM gstr1_exp WHERE gstr1_return_id = $1 ORDER BY invoice_date', [returnData.id]),
+            db.query('SELECT * FROM gstr1_b2cs WHERE gstr1_return_id = $1', [returnData.id]),
+            db.query('SELECT * FROM gstr1_nil WHERE gstr1_return_id = $1', [returnData.id]),
+            db.query('SELECT * FROM gstr1_cdnr WHERE gstr1_return_id = $1 ORDER BY note_date', [returnData.id])
+        ]);
+
+        res.json({
+            return: returnData,
+            sections: {
+                b2b: b2bData.rows,
+                b2cl: b2clData.rows,
+                exp: expData.rows,
+                b2cs: b2csData.rows,
+                nil: nilData.rows,
+                cdnr: cdnrData.rows
+            }
+        });
+    } catch (error) {
+        console.error('GSTR-1 Details Fetch Error:', error);
+        res.status(500).json({ error: 'Failed to fetch GSTR-1 details' });
+    }
+});
+
+// Get GSTR-3B details
+router.get('/gstr3b/:returnPeriod', async (req, res) => {
+    try {
+        const { returnPeriod } = req.params;
+
+        // Get return header
+        const returnQuery = await db.query(
+            'SELECT * FROM gstr3b_returns WHERE tenant_id = $1 AND return_period = $2',
+            [req.tenantId, returnPeriod]
+        );
+
+        if (returnQuery.rows.length === 0) {
+            return res.status(404).json({ error: 'GSTR-3B return not found' });
+        }
+
+        const returnData = returnQuery.rows[0];
+
+        // Get section data
+        const [section3_1_a, section3_1_b, section3_1_c, section3_1_d, section3_1_e, section3_2, section4, section6_1] = await Promise.all([
+            db.query('SELECT * FROM gstr3b_3_1_a WHERE gstr3b_return_id = $1', [returnData.id]),
+            db.query('SELECT * FROM gstr3b_3_1_b WHERE gstr3b_return_id = $1', [returnData.id]),
+            db.query('SELECT * FROM gstr3b_3_1_c WHERE gstr3b_return_id = $1', [returnData.id]),
+            db.query('SELECT * FROM gstr3b_3_1_d WHERE gstr3b_return_id = $1', [returnData.id]),
+            db.query('SELECT * FROM gstr3b_3_1_e WHERE gstr3b_return_id = $1', [returnData.id]),
+            db.query('SELECT * FROM gstr3b_3_2 WHERE gstr3b_return_id = $1', [returnData.id]),
+            db.query('SELECT * FROM gstr3b_4 WHERE gstr3b_return_id = $1', [returnData.id]),
+            db.query('SELECT * FROM gstr3b_6_1 WHERE gstr3b_return_id = $1', [returnData.id])
+        ]);
+
+        res.json({
+            return: returnData,
+            sections: {
+                '3_1_a': section3_1_a.rows,
+                '3_1_b': section3_1_b.rows,
+                '3_1_c': section3_1_c.rows,
+                '3_1_d': section3_1_d.rows,
+                '3_1_e': section3_1_e.rows,
+                '3_2': section3_2.rows,
+                '4': section4.rows,
+                '6_1': section6_1.rows
+            }
+        });
+    } catch (error) {
+        console.error('GSTR-3B Details Fetch Error:', error);
+        res.status(500).json({ error: 'Failed to fetch GSTR-3B details' });
     }
 });
 
