@@ -142,7 +142,7 @@ export const fetchCustomerInvoices = async (customerId: string): Promise<Invoice
         .from('invoices')
         .select(`
       *,
-      customer:customers!invoices_customer_id_fkey ( name, gstin, address, state, state_code ),
+      customer:customers!invoices_customer_id_fkey ( name, gstin, address, state, state_code, phone ),
       items:invoice_items!invoice_items_invoice_id_fkey (
         product_id, quantity, rate, gst_percent, amount,
         product:inventory!invoice_items_product_id_fkey ( name, product_name, hsn, sac, unit )
@@ -166,6 +166,7 @@ export const fetchCustomerInvoices = async (customerId: string): Promise<Invoice
                 name: custData?.name || 'Unknown',
                 gstin: custData?.gstin,
                 address: custData?.address,
+                phone: custData?.phone,
                 state: custData?.state,
                 stateCode: custData?.state_code
             },
@@ -319,7 +320,7 @@ export const fetchInvoices = async (): Promise<Invoice[]> => {
         .from('invoices')
         .select(`
       *,
-      customer:customers!invoices_customer_id_fkey ( name, gstin, address, state, state_code ),
+      customer:customers!invoices_customer_id_fkey ( name, gstin, address, state, state_code, phone ),
       items:invoice_items!invoice_items_invoice_id_fkey (
         product_id, quantity, rate, gst_percent, amount,
         product:inventory!invoice_items_product_id_fkey ( name, product_name, hsn, sac, unit )
@@ -352,6 +353,7 @@ export const fetchInvoices = async (): Promise<Invoice[]> => {
                 name: custData?.name || 'Unknown',
                 gstin: custData?.gstin,
                 address: custData?.address,
+                phone: custData?.phone,
                 state: custData?.state,
                 stateCode: custData?.state_code
             },

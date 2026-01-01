@@ -198,7 +198,7 @@ const InvoiceView: React.FC<Props> = ({ invoice, firm }) => {
                 <h1 className="font-bold-title uppercase tracking-wide">{firm.name}</h1>
                 <p className="text-[10px] mt-1">{firm.address}</p>
                 <p className="text-[10px] mt-1 font-semibold">
-                  Mobile: {firm.phone} | Email: {firm.email}
+                  <span className="font-bold">Mobile:</span> {firm.phone || (firm as any).mobile || ''} | <span className="font-bold">Email:</span> {firm.email}
                 </p>
                 <p className="mt-2 font-bold text-sm">GSTIN - {firm.gstin}</p>
               </div>
@@ -232,8 +232,8 @@ const InvoiceView: React.FC<Props> = ({ invoice, firm }) => {
                     <p><span className="font-bold w-12 inline-block">Name:</span> {invoice.customer.name}</p>
                     <p><span className="font-bold w-12 inline-block">Address:</span> {invoice.customer.address}</p>
                     <p><span className="font-bold w-12 inline-block">GSTIN:</span> {invoice.customer.gstin}</p>
-                    <p><span className="font-bold w-12 inline-block">Mobile:</span> {invoice.customer.phone}</p>
-                    <p><span className="font-bold w-12 inline-block">State:</span> {invoice.customer.state} ({invoice.customer.stateCode})</p>
+                    <p><span className="font-bold w-16 inline-block">Mobile:</span> {invoice.customer.phone || (invoice.customer as any).mobile || (invoice.customer as any).contact || (invoice.customer as any).mobileNumber || (invoice.customer as any).phoneNumber || ''}</p>
+                    <p><span className="font-bold w-16 inline-block">State:</span> {invoice.customer.state || ''} ({invoice.customer.stateCode || ''})</p>
                   </div>
                 </div>
                 {/* Shipping (Mirrored) */}
@@ -243,8 +243,8 @@ const InvoiceView: React.FC<Props> = ({ invoice, firm }) => {
                     <p><span className="font-bold w-12 inline-block">Name:</span> {invoice.customer.name}</p>
                     <p><span className="font-bold w-12 inline-block">Address:</span> {invoice.customer.address}</p>
                     <p><span className="font-bold w-12 inline-block">GSTIN:</span> {invoice.customer.gstin}</p>
-                    <p><span className="font-bold w-12 inline-block">Mobile:</span> {invoice.customer.phone}</p>
-                    <p><span className="font-bold w-12 inline-block">State:</span> {invoice.customer.state} ({invoice.customer.stateCode})</p>
+                    <p><span className="font-bold w-16 inline-block">Mobile:</span> {invoice.customer.phone || (invoice.customer as any).mobile || (invoice.customer as any).contact || (invoice.customer as any).mobileNumber || (invoice.customer as any).phoneNumber || ''}</p>
+                    <p><span className="font-bold w-16 inline-block">State:</span> {invoice.customer.state || ''} ({invoice.customer.stateCode || ''})</p>
                   </div>
                 </div>
               </div>
@@ -422,13 +422,13 @@ const InvoiceView: React.FC<Props> = ({ invoice, firm }) => {
                           <div>
                             <p className="mb-1"><span className="font-bold sticky-underline-2 ">Terms and Conditions</span></p>
                             <div className="text-[8px] leading-tight flex flex-col gap-0.5">
-                              <div className="flex items-start">
+                              {/* <div className="flex items-start">
                                 <span className="font-bold mr-1">1.</span>
                                 <span>E & O.E.</span>
-                              </div>
-                              {firm.terms.slice(0, 3).map((t, i) => (
+                              </div> */}
+                              {firm.terms.slice(0, 4).map((t, i) => (
                                 <div key={i} className="flex items-start">
-                                  <span className="font-bold mr-1">{i + 2}.</span>
+                                  <span className="font-bold mr-1">{i + 1}.</span>
                                   <span>{t}</span>
                                 </div>
                               ))}
