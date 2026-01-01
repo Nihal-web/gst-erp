@@ -9,15 +9,15 @@ const ResetPassword: React.FC = () => {
     const [loading, setLoading] = useState(false);
     const [showPassword, setShowPassword] = useState(false);
     const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-    const { updatePassword, user } = useAuth();
+    const { updatePassword, user, isLoading: authLoading } = useAuth();
     const navigate = useNavigate();
 
     useEffect(() => {
-        // If user is not in recovery session, redirect to login
-        if (!user && !window.location.hash.includes('type=recovery')) {
+        // If not loading and no user and no recovery token, redirect to login
+        if (!authLoading && !user && !window.location.hash.includes('type=recovery')) {
             navigate('/login');
         }
-    }, [user, navigate]);
+    }, [user, authLoading, navigate]);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -44,6 +44,18 @@ const ResetPassword: React.FC = () => {
             setLoading(false);
         }
     };
+
+    if (authLoading) {
+        return (
+            <div className="min-h-screen flex items-center justify-center bg-slate-50 p-6">
+                <div className="w-full max-w-md bg-white rounded-[2.5rem] shadow-2xl p-10 border border-slate-100 text-center">
+                    <div className="w-16 h-16 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+                    <h1 className="text-2xl font-black text-slate-800">Verifying Reset Link</h1>
+                    <p className="text-slate-400 text-sm mt-2">Please wait while we authenticate your session...</p>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div className="min-h-screen flex items-center justify-center bg-slate-50 p-6">

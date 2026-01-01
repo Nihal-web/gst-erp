@@ -26,32 +26,77 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [originalRole, setOriginalRole] = useState<UserRole | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   useEffect(() => {
-    // Fail-safe: Force loading to stop after 6 seconds to prevent permanent hang
-    const timer = setTimeout(() => {
-      if (isLoading) {
-        console.warn("Auth initialization timed out - forcing loading: false");
-        setIsLoading(false);
-      }
-    }, 6000);
+    // 1. Handle HashRouter + Supabase Auth fragment issue
+    // Supabase tokens are appended after the hash, e.g., /#/reset-password#access_token=...
+    // This can confuse Supabase's automatic parsing.
+    const checkHashAuth = async () => {
+      const hash = window.location.hash;
+      if (hash.includes('access_token=') && hash.includes('refresh_token=')) {
+        console.log("Detected auth tokens in URL hash. Attempting manual session establishment...");
+        try {
+          // Extract the part of the hash containing the params
+          const searchParams = new URLSearchParams(hash.substring(hash.indexOf('access_token=')));
+          const accessToken = searchParams.get('access_token');
+          const refreshToken = searchParams.get('refresh_token');
 
-    // Listen for auth state changes
+          if (accessToken && refreshToken) {
+            const { data, error } = await supabase.auth.setSession({
+              access_token: accessToken,
+              refresh_token: refreshToken
+            });
+
+            if (error) {
+              console.error("Manual session set failed:", error.message);
+            } else if (data.session) {
+              console.log("Session manually established from hash. User ID:", data.session.user.id);
+              // Trigger profile fetch immediately to speed up UI
+              fetchProfile(data.session.user.id, data.session.user.email!);
+            }
+          }
+        } catch (e) {
+          console.error("Error parsing auth tokens from hash:", e);
+        }
+      }
+    };
+
+    checkHashAuth();
+
+    // 2. Fail-safe: Force loading to stop after 15 seconds to prevent permanent hang
+    const timer = setTimeout(() => {
+      setIsLoading(current => {
+        if (current) {
+          console.warn("Auth initialization timed out - forcing loading: false");
+          return false;
+        }
+        return false;
+      });
+    }, 15000);
+
+    // 3. Listen for auth state changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       console.log("Auth State Change:", event, session?.user?.id);
 
       if (session?.user) {
         fetchProfile(session.user.id, session.user.email!);
       } else {
-        setUser(null);
-        setOriginalRole(null);
-        setIsLoading(false);
+        // Only set null if we are sure there is no session
+        // (onAuthStateChange triggers INITIAL_SESSION which might be null before setSession finishes)
+        if (event !== 'INITIAL_SESSION' || !window.location.hash.includes('access_token=')) {
+          setUser(null);
+          setOriginalRole(null);
+          setIsLoading(false);
+        }
       }
     });
 
-    // Handle initial check as well (some browsers delay the event)
+    // 4. Handle initial check as well (some browsers delay the event)
     supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session?.user && !user) {
-        fetchProfile(session.user.id, session.user.email!);
-      } else if (!session) {
+      if (session?.user) {
+        if (!user) {
+          fetchProfile(session.user.id, session.user.email!);
+        }
+      } else if (!window.location.hash.includes('access_token=')) {
+        // Only stop loading if we're not expecting an async hash session set
         setIsLoading(false);
       }
     });
@@ -161,7 +206,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const resetPassword = async (email: string) => {
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${window.location.origin}/reset-password`,
+      redirectTo: `${window.location.origin}/#/reset-password`,
     });
     if (error) throw new Error(error.message);
   };
