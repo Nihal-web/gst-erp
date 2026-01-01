@@ -132,7 +132,7 @@ const Inventory: React.FC = () => {
     setShowWarehouseModal(false);
   };
 
-  const handleAddNewProduct = (e: React.FormEvent) => {
+  const handleAddNewProduct = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newProduct.productName || !newProduct.hsn) {
       showAlert("Product Name and HSN are required.", "error");
@@ -150,23 +150,26 @@ const Inventory: React.FC = () => {
       unit: newProduct.unit || 'NOS',
       stock: Number(newProduct.stock) || 0,
       gstPercent: Number(newProduct.gstPercent) || 18,
-      warehouseId: newProduct.warehouseId,
+      warehouseId: newProduct.warehouseId || undefined,
       alertThreshold: Number(newProduct.alertThreshold) || 10,
       packagingUnits: newProduct.packagingUnits || [],
       barcode: newProduct.barcode || ''
     };
 
-    if (newProduct.id) {
-      updateProduct(product);
-      logActivity(user?.email || 'System', 'UPDATE PRODUCT', `Updated details for ${product.name}`, user?.id);
-      showAlert("Product updated successfully!", "success");
-    } else {
-      addProduct(product);
-      logActivity(user?.email || 'System', 'CREATE PRODUCT', `Added ${product.name} to inventory`, user?.id);
+    try {
+      if (newProduct.id) {
+        await updateProduct(product);
+        logActivity(user?.email || 'System', 'UPDATE PRODUCT', `Updated details for ${product.name}`, user?.id);
+      } else {
+        await addProduct(product);
+        logActivity(user?.email || 'System', 'CREATE PRODUCT', `Added ${product.name} to inventory`, user?.id);
+      }
+      setShowAddModal(false);
+      setNewProduct({ name: '', productName: '', description: '', type: 'GOODS', hsn: '', barcode: '', rate: 0, unit: 'NOS', stock: 0, gstPercent: 18, warehouseId: '', alertThreshold: 10, packagingUnits: [] });
+    } catch (err) {
+      console.error("Save Product Sync Failure:", err);
+      // AppContext handles the error alert, so we just keep the modal open for retry
     }
-
-    setShowAddModal(false);
-    setNewProduct({ name: '', productName: '', description: '', type: 'GOODS', hsn: '', barcode: '', rate: 0, unit: 'NOS', stock: 0, gstPercent: 18, warehouseId: '', alertThreshold: 10, packagingUnits: [] });
   };
 
   const filteredProducts = selectedWarehouseId === 'all'
@@ -354,7 +357,7 @@ const Inventory: React.FC = () => {
           <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm overflow-hidden">
             <div className="bg-white w-full max-w-lg rounded-3xl lg:rounded-[2.5rem] shadow-2xl flex flex-col max-h-[90vh] animate-in zoom-in-95">
               <div className="p-6 lg:p-10 border-b border-slate-50 flex-shrink-0 flex justify-between items-center">
-                <h3 className="text-xl lg:text-2xl font-black text-slate-800">New Asset Registration</h3>
+                <h3 className="text-xl lg:text-2xl font-black text-slate-800">{newProduct.id ? 'Edit Asset Details' : 'New Asset Registration'}</h3>
                 <label className={`cursor-pointer px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest transition-all flex items-center gap-2 ${isScanning ? 'bg-slate-100 text-slate-400' : 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-lg hover:shadow-xl hover:scale-105'}`}>
                   <input type="file" accept="image/*" className="hidden" onChange={handleSmartScan} disabled={isScanning} />
                   {isScanning ? 'Scanning...' : '📷 Smart Scan'}
@@ -506,7 +509,9 @@ const Inventory: React.FC = () => {
 
               <div className="p-6 lg:p-10 border-t border-slate-50 flex gap-3 flex-shrink-0 bg-slate-50/10">
                 <button type="button" onClick={() => setShowAddModal(false)} className="flex-1 py-3 lg:py-4 bg-slate-100 text-slate-600 rounded-xl lg:rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-slate-200 transition-all">Discard</button>
-                <button type="submit" form="add-product-form" className="flex-1 py-3 lg:py-4 bg-blue-600 text-white rounded-xl lg:rounded-2xl font-black shadow-xl shadow-blue-100 text-xs uppercase tracking-widest hover:bg-blue-700 transition-all active:scale-95">Register Asset</button>
+                <button type="submit" form="add-product-form" className="flex-1 py-3 lg:py-4 bg-blue-600 text-white rounded-xl lg:rounded-2xl font-black shadow-xl shadow-blue-100 text-xs uppercase tracking-widest hover:bg-blue-700 transition-all active:scale-95">
+                  {newProduct.id ? 'Save Changes' : 'Register Asset'}
+                </button>
               </div>
             </div>
           </div>

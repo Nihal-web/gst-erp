@@ -147,7 +147,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           setOriginalRole(created.role as UserRole);
         } else {
           // Fallback: If DB insert fails/returns null (RLS?), use session data so user can at least login
-          console.warn("Profile creation returned no data, using session fallback", insErr);
+          console.error("CRITICAL: Profile creation failed (Check DB Constraints!). Ensure you have run the update_schema.sql script.", insErr);
           const fallbackUser = {
             id: userId,
             email,

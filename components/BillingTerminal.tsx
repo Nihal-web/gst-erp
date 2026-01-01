@@ -323,6 +323,8 @@ const BillingTerminal: React.FC = () => {
 
   const generateInvoicePDF = async (): Promise<Blob | null> => {
     let tempContainer: HTMLDivElement | null = null;
+    const patchedStyles: { tag: HTMLStyleElement, content: string }[] = [];
+
     try {
       showAlert("Preparing high-quality document...", "info");
 
@@ -331,6 +333,15 @@ const BillingTerminal: React.FC = () => {
         showAlert("Reference lost. Please refresh and try again.", "error");
         return null;
       }
+
+      // --- LIVE SURGERY: Prevent html2canvas crash by temporarily patching OKLCH styles ---
+      document.querySelectorAll('style').forEach(tag => {
+        if (tag.textContent?.includes('oklch')) {
+          patchedStyles.push({ tag: tag as HTMLStyleElement, content: tag.textContent });
+          // Replace oklch(...) with hex black. Fast and effective.
+          tag.textContent = tag.textContent.replace(/oklch\([^)]+\)/g, '#000000');
+        }
+      });
 
       const A4_PIXEL_WIDTH = 794;
       const A4_PIXEL_HEIGHT = 1123;
@@ -350,22 +361,18 @@ const BillingTerminal: React.FC = () => {
       // Wait for layout to settle in the NEW container
       await new Promise(resolve => setTimeout(resolve, 800));
 
-      // Clone all head styles to ensure Tailwind 4 variables and global styles are available in the temp container
-      const allStyles = document.head.querySelectorAll('style, link[rel="stylesheet"]');
-      allStyles.forEach(style => {
-        tempContainer.appendChild(style.cloneNode(true));
-      });
+      // NOTE: We no longer clone head styles or link tags here because modern 
+      // Tailwind v4 (oklch) crashes the html2canvas parser. 
+      // Instead, we rely on the internal 'Safe Layout' CSS block defined within InvoiceView.tsx
 
       const clonedInvoice = invoiceElement.cloneNode(true) as HTMLElement;
-      clonedInvoice.className = 'invoice-container';
+      // DO NOT set .invoice-container here, as the content already has it. 
+      // Setting it again causes nested padding and "extra canvas" issues.
       clonedInvoice.style.width = '100%';
-      clonedInvoice.style.minHeight = `${A4_PIXEL_HEIGHT}px`;
-      clonedInvoice.style.padding = '35px';
-      clonedInvoice.style.margin = '0';
       clonedInvoice.style.border = 'none';
       clonedInvoice.style.boxShadow = 'none';
-      clonedInvoice.style.transform = 'none';
-      clonedInvoice.style.boxSizing = 'border-box';
+      clonedInvoice.style.margin = '0';
+      clonedInvoice.style.padding = '0'; // Use existing padding from InvoiceView
 
       tempContainer.appendChild(clonedInvoice);
 
@@ -413,9 +420,14 @@ const BillingTerminal: React.FC = () => {
 
     } catch (error) {
       console.error("PDF Generation Error:", error);
-      showAlert("PDF error. Try using the browser print option (Ctrl+P).", "error");
+      showAlert("PDF error. High-quality capture failed.", "error");
       return null;
     } finally {
+      // Restore styles immediately after capture
+      patchedStyles.forEach(s => {
+        s.tag.textContent = s.content;
+      });
+
       if (tempContainer && document.body.contains(tempContainer)) {
         document.body.removeChild(tempContainer);
       }
@@ -424,21 +436,37 @@ const BillingTerminal: React.FC = () => {
 
   const handlePrint = async () => {
     setIsPrinting(true);
-    const pdfBlob = await generateInvoicePDF();
-    if (pdfBlob) {
-      const url = URL.createObjectURL(pdfBlob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `Invoice_${invoiceData?.invoiceNo || 'document'}.pdf`;
-      a.click();
-      URL.revokeObjectURL(url);
-      showAlert("PDF downloaded successfully.", "success");
+    try {
+      const pdfBlob = await generateInvoicePDF();
+      if (pdfBlob) {
+        const url = URL.createObjectURL(pdfBlob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `Invoice_${invoiceData?.invoiceNo || 'document'}.pdf`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        showAlert("Document downloaded successfully.", "success");
+      }
+    } catch (e) {
+      showAlert("Download failed. Please try again.", "error");
+    } finally {
+      setIsPrinting(false);
     }
-    setIsPrinting(false);
   };
 
   const handleWhatsAppShare = async () => {
     if (!invoiceData) return;
+
+    // --- POPUP PRE-EMPTION ---
+    // Open a temporary window immediately to reserve the user interaction. 
+    // This prevents the browser from blocking WhatsApp after the long PDF generation process.
+    const waWindow = window.open('', '_blank');
+    if (waWindow) {
+      waWindow.document.write('<html><body style="display:flex;align-items:center;justify-content:center;font-family:sans-serif;background:#f8fafc"><div><h3>Preparing your invoice link...</h3><p>Connecting to WhatsApp Securely...</p></div></body></html>');
+    }
+
     setIsPrinting(true);
 
     try {
@@ -455,17 +483,23 @@ const BillingTerminal: React.FC = () => {
       const phone = rawPhone.replace(/\D/g, '');
       const targetPhone = phone.length === 10 ? `91${phone}` : phone;
 
-      const text = `Hello ${invoiceData.customer.name},\n\nHere is your invoice *${invoiceData.invoiceNo}* for *₹${formatCurrency(invoiceData.totalAmount)}*.\n\nYou can view and download it here: ${publicUrl}\n\nThank you for your business!`;
+      const text = `Hello ${invoiceData.customer.name},\n\nHere is your *TAX INVOICE* (${invoiceData.invoiceNo}) for *₹${formatCurrency(invoiceData.totalAmount)}*.\n\nView/Download: ${publicUrl}\n\nGST compliant billing via GST-Master.`;
 
-      // Open WhatsApp
       const waUrl = `https://wa.me/${targetPhone}?text=${encodeURIComponent(text)}`;
-      window.open(waUrl, '_blank');
 
-      showAlert("Invoice Link Generated & WhatsApp Opened!", "success");
+      if (waWindow) {
+        waWindow.location.href = waUrl;
+      } else {
+        // Fallback if window failed to open initially
+        window.open(waUrl, '_blank');
+      }
+
+      showAlert("WhatsApp Share Prepared!", "success");
 
     } catch (e) {
       console.error("Share Error:", e);
-      showAlert("Failed to share invoice.", "error");
+      if (waWindow) waWindow.close();
+      showAlert("WhatsApp link failed to generate.", "error");
     } finally {
       setIsPrinting(false);
     }
@@ -514,10 +548,10 @@ const BillingTerminal: React.FC = () => {
           </div>
         </div>
 
-        {/* PDF Preview Area - Styled like a document viewer */}
-        <div className="flex justify-center bg-slate-800/90 rounded-3xl p-4 lg:p-10 overflow-auto max-h-[80vh] border border-slate-700 shadow-inner scrollbar-thin scrollbar-thumb-slate-600 scrollbar-track-transparent backdrop-blur-sm">
-          <div className="relative shadow-2xl shadow-black/50 print:shadow-none transition-transform duration-300 ease-out origin-top scale-[0.4] sm:scale-[0.55] md:scale-[0.7] lg:scale-90 xl:scale-100">
-            <div id="invoice-capture-area" className="invoice-wrapper bg-white" style={{ width: '210mm' }}>
+        {/* PDF Preview Area */}
+        <div className="flex justify-center bg-slate-100 rounded-3xl p-4 lg:p-8 overflow-auto max-h-[85vh] border border-slate-200 shadow-inner">
+          <div className="relative shadow-2xl print:shadow-none bg-white">
+            <div id="invoice-capture-area" className="invoice-wrapper" style={{ width: '210mm', minHeight: '297mm' }}>
               <InvoiceView invoice={invoiceData} firm={displayFirm} />
             </div>
           </div>

@@ -83,3 +83,6 @@ CREATE TABLE IF NOT EXISTS activity_logs (
     details TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
+
+-- Fix for user profile creation failing due to legacy column
+ALTER TABLE users ALTER COLUMN password_hash DROP NOT NULL;

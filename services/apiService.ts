@@ -264,8 +264,8 @@ export const updateProductApi = async (product: Product): Promise<Product> => {
         stock: product.stock,
         gst_percent: product.gstPercent,
         alert_threshold: product.alertThreshold ?? 10,
-        warehouse_id: product.warehouseId,
-        barcode: product.barcode
+        warehouse_id: product.warehouseId || null,
+        barcode: product.barcode || null
     };
 
     const { data, error } = await supabase
@@ -277,7 +277,30 @@ export const updateProductApi = async (product: Product): Promise<Product> => {
 
     if (error) throw error;
 
-    return { ...data, gstPercent: data.gst_percent } as Product;
+    // Synchronize Packaging Units: Clear existing and re-insert new to handle additions/removals
+    await supabase.from('packaging_units').delete().eq('product_id', product.id);
+
+    if (product.packagingUnits && product.packagingUnits.length > 0) {
+        const puPayload = product.packagingUnits.map(pu => ({
+            product_id: product.id,
+            unit_name: pu.unitName,
+            conversion_factor: pu.conversionFactor,
+            is_default: pu.isDefault
+        }));
+        const { error: puError } = await supabase.from('packaging_units').insert(puPayload);
+        if (puError) console.error("Error updating packaging units", puError);
+    }
+
+    // Return the updated product with mapped fields for the frontend
+    return {
+        ...data,
+        productName: data.product_name,
+        description: data.description,
+        gstPercent: data.gst_percent,
+        warehouseId: data.warehouse_id,
+        alertThreshold: data.alert_threshold,
+        packagingUnits: product.packagingUnits || []
+    } as Product;
 };
 
 export const deleteProductApi = async (id: string): Promise<void> => {

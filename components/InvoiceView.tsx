@@ -154,10 +154,10 @@ const InvoiceView: React.FC<Props> = ({ invoice, firm }) => {
         .font-bold-title { font-size: 18px; font-weight: 800; }
         /* Sticky Underline Class */
         .sticky-underline {
-            border-bottom: 2px solid #000000; /* Made slightly thicker for emphasis as per "stick more" intent */
+            border-bottom: 2px solid #000000;
             padding-bottom: 2px;
             display: inline-block;
-            line-height: 2; /* Pull border up to touch CAPS baseline */
+            line-height: 2;
         }
         .sticky-underline-2 {
             border-bottom: 1px solid #000000; 
@@ -165,6 +165,7 @@ const InvoiceView: React.FC<Props> = ({ invoice, firm }) => {
             display: inline-block;
             line-height: 2; 
         }
+
 
         .invoice-table {
             width: 100%;
@@ -331,22 +332,22 @@ const InvoiceView: React.FC<Props> = ({ invoice, firm }) => {
                       {/* Detailed Tax Summary Table (HSN/SAC Wise) */}
                       {totalTax > 0 && (
                         <div className="p-2 border-b-black">
-                          <p className="text-[8px] font-black uppercase tracking-widest text-slate-400 mb-2">GST Tax Summary</p>
-                          <table className="w-full text-[8px] border-collapse border border-slate-200">
+                          <p className="text-[8px] font-black uppercase tracking-widest mb-2" style={{ color: '#94a3b8' }}>GST Tax Summary</p>
+                          <table className="w-full text-[8px] border-collapse" style={{ border: '1px solid #e2e8f0' }}>
                             <thead>
-                              <tr className="bg-slate-50 font-bold border-b border-slate-200">
-                                <th className="p-1 text-left border-r border-slate-200">HSN/SAC</th>
-                                <th className="p-1 text-right border-r border-slate-200">Taxable Val.</th>
+                              <tr className="font-bold border-b border-slate-200" style={{ backgroundColor: '#f8fafc' }}>
+                                <th className="p-1 text-left" style={{ borderRight: '1px solid #e2e8f0' }}>HSN/SAC</th>
+                                <th className="p-1 text-right" style={{ borderRight: '1px solid #e2e8f0' }}>Taxable Val.</th>
                                 {isInterState ? (
                                   <>
-                                    <th className="p-1 text-right border-r border-slate-200">IGST %</th>
+                                    <th className="p-1 text-right" style={{ borderRight: '1px solid #e2e8f0' }}>IGST %</th>
                                     <th className="p-1 text-right">IGST Amt</th>
                                   </>
                                 ) : (
                                   <>
-                                    <th className="p-1 text-right border-r border-slate-200">CGST %</th>
-                                    <th className="p-1 text-right border-r border-slate-200">CGST Amt</th>
-                                    <th className="p-1 text-right border-r border-slate-200">SGST %</th>
+                                    <th className="p-1 text-right" style={{ borderRight: '1px solid #e2e8f0' }}>CGST %</th>
+                                    <th className="p-1 text-right" style={{ borderRight: '1px solid #e2e8f0' }}>CGST Amt</th>
+                                    <th className="p-1 text-right" style={{ borderRight: '1px solid #e2e8f0' }}>SGST %</th>
                                     <th className="p-1 text-right">SGST Amt</th>
                                   </>
                                 )}
@@ -366,8 +367,8 @@ const InvoiceView: React.FC<Props> = ({ invoice, firm }) => {
                                 return acc;
                               }, {})).map((group: any, idx) => {
                                 return (
-                                  <tr key={idx} className="border-b border-slate-100 last:border-0">
-                                    <td className="p-1 border-r border-slate-200">{group.hsn}</td>
+                                  <tr key={idx} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                                    <td className="p-1" style={{ borderRight: '1px solid #e2e8f0' }}>{group.hsn}</td>
                                     <td className="p-1 text-right border-r border-slate-200">{formatCurrency(group.taxable)}</td>
                                     {isInterState ? (
                                       <>
@@ -376,9 +377,9 @@ const InvoiceView: React.FC<Props> = ({ invoice, firm }) => {
                                       </>
                                     ) : (
                                       <>
-                                        <td className="p-1 text-right border-r border-slate-200">{group.rate / 2}%</td>
-                                        <td className="p-1 text-right border-r border-slate-200">{formatCurrency(group.cgst)}</td>
-                                        <td className="p-1 text-right border-r border-slate-200">{group.rate / 2}%</td>
+                                        <td className="p-1 text-right" style={{ borderRight: '1px solid #e2e8f0' }}>{group.rate / 2}%</td>
+                                        <td className="p-1 text-right" style={{ borderRight: '1px solid #e2e8f0' }}>{formatCurrency(group.cgst)}</td>
+                                        <td className="p-1 text-right" style={{ borderRight: '1px solid #e2e8f0' }}>{group.rate / 2}%</td>
                                         <td className="p-1 text-right font-bold">{formatCurrency(group.sgst)}</td>
                                       </>
                                     )}
@@ -443,7 +444,7 @@ const InvoiceView: React.FC<Props> = ({ invoice, firm }) => {
                     {/* Right Totals Column */}
                     <div className="text-[9px]">
                       <div className="flex justify-between p-1 px-2 border-b-std-gray">
-                        <span>Taxable Amount</span>
+                        <span style={{ color: '#64748b' }}>Taxable Amount</span>
                         <span className="font-bold">{formatCurrency(invoice.totalTaxable)}</span>
                       </div>
                       {/* Tax Breakdown */}
