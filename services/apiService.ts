@@ -349,56 +349,21 @@ export const fetchInvoices = async (): Promise<Invoice[]> => {
 };
 
 export const createInvoice = async (invoice: Invoice) => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) throw new Error("No user logged in");
+    const authHeaders = await getBackendAuthHeader();
 
-    console.log("Creating Invoice for Tenant:", user.id);
+    // The backend expects specific field names and structure
+    const response = await fetch('/api/invoices', {
+        method: 'POST',
+        headers: authHeaders,
+        body: JSON.stringify(invoice)
+    });
 
-    const invPayload = {
-        tenant_id: user.id,
-        customer_id: invoice.customer.id,
-        invoice_number: invoice.invoiceNo,
-        total_amount: invoice.totalAmount,
-        tax_amount: (invoice.igst || 0) + (invoice.cgst || 0) + (invoice.sgst || 0),
-        status: 'generated'
-    };
-
-    const { data: invData, error: invError } = await supabase.from('invoices').insert([invPayload]).select().single();
-
-    if (invError) {
-        console.error("Invoice Insert Error:", invError);
-        throw invError;
+    if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to create invoice via server');
     }
 
-    console.log("Invoice Header Created:", invData.id);
-
-    // 2. Items
-    const itemsPayload = invoice.items.map(item => ({
-        invoice_id: invData.id,
-        product_id: item.productId,
-        quantity: item.qty,
-        rate: item.rate,
-        gst_percent: item.gstPercent,
-        amount: item.taxableValue // or total
-    }));
-
-    const { error: itemsError } = await supabase.from('invoice_items').insert(itemsPayload);
-    if (itemsError) console.error("Error inserting items", itemsError);
-
-    // 3. Stock Update (Client side loop - risky but only option without RPC)
-    for (const item of invoice.items) {
-        if (item.productId) {
-            // Decrement stock
-            // Calculate deduction based on conversion factor if present (Packaging Unit)
-            // If conversionFactor is set (e.g. 1 Katta = 10 KG), and qty is 1, we deduct 10.
-            const deduction = item.conversionFactor ? (item.qty * item.conversionFactor) : item.qty;
-
-            const { data: prod } = await supabase.from('inventory').select('stock').eq('id', item.productId).single();
-            if (prod) {
-                await supabase.from('inventory').update({ stock: prod.stock - deduction }).eq('id', item.productId);
-            }
-        }
-    }
+    return await response.json();
 };
 
 // --- STOCK LOGS ---
@@ -443,8 +408,8 @@ export const adjustStockApi = async (productId: string, delta: number, reason: s
 };
 
 export const fetchGlobalStats = async () => {
-    // Platform Admin: Fetch stats from all tables
-    const { data: users } = await supabase.from('users').select('*');
+    // Platform Admin: Fetch stats from all tables - restricted columns for scalability
+    const { data: users } = await supabase.from('users').select('id, name, email, role, shop_name, status, plan, created_at');
     const { data: invoices } = await supabase.from('invoices').select('total_amount, tenant_id');
 
     const totalRevenue = invoices?.reduce((sum, inv: any) => sum + (inv.total_amount || 0), 0) || 0;
@@ -635,6 +600,15 @@ export const uploadInvoicePDF = async (blob: Blob, fileName: string): Promise<st
     return data.publicUrl;
 };
 
+// --- BACKEND API HELPERS ---
+const getBackendAuthHeader = async () => {
+    const { data: { session } } = await supabase.auth.getSession();
+    return {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${session?.access_token}`
+    };
+};
+
 // --- GSTR OPERATIONS ---
 export const fetchGSTRReturns = async () => {
     const { data: { user } } = await supabase.auth.getUser();
@@ -663,11 +637,10 @@ export const fetchGSTRReturns = async () => {
 };
 
 export const generateGSTR1 = async (returnPeriod: string) => {
+    const authHeaders = await getBackendAuthHeader();
     const response = await fetch('/api/gstr1/generate', {
         method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-        },
+        headers: authHeaders,
         body: JSON.stringify({ returnPeriod }),
     });
 
@@ -680,11 +653,10 @@ export const generateGSTR1 = async (returnPeriod: string) => {
 };
 
 export const generateGSTR3B = async (returnPeriod: string) => {
+    const authHeaders = await getBackendAuthHeader();
     const response = await fetch('/api/gstr3b/generate', {
         method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-        },
+        headers: authHeaders,
         body: JSON.stringify({ returnPeriod }),
     });
 
@@ -697,7 +669,10 @@ export const generateGSTR3B = async (returnPeriod: string) => {
 };
 
 export const fetchGSTR1Details = async (returnPeriod: string) => {
-    const response = await fetch(`/api/gstr1/${returnPeriod}`);
+    const authHeaders = await getBackendAuthHeader();
+    const response = await fetch(`/api/gstr1/${returnPeriod}`, {
+        headers: authHeaders
+    });
 
     if (!response.ok) {
         const error = await response.json();
@@ -708,7 +683,10 @@ export const fetchGSTR1Details = async (returnPeriod: string) => {
 };
 
 export const fetchGSTR3BDetails = async (returnPeriod: string) => {
-    const response = await fetch(`/api/gstr3b/${returnPeriod}`);
+    const authHeaders = await getBackendAuthHeader();
+    const response = await fetch(`/api/gstr3b/${returnPeriod}`, {
+        headers: authHeaders
+    });
 
     if (!response.ok) {
         const error = await response.json();

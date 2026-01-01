@@ -14,11 +14,15 @@ const OnboardingModal: React.FC = () => {
     useEffect(() => {
         if (firm) {
             setFormData(firm);
-            // Check if critical details are missing
+
+            // Check session storage to see if they've dismissed it this session
+            const isDismissed = sessionStorage.getItem('onboarding_dismissed');
+
             // Platform Admin doesn't need this check
-            if (isLoaded && user?.role !== UserRole.PLATFORM_ADMIN) {
-                const isMissingDetails = !firm.address || !firm.phone || !firm.gstin;
-                if (isMissingDetails) {
+            if (isLoaded && user?.role !== UserRole.PLATFORM_ADMIN && !isDismissed) {
+                // Only treat Name and Phone as absolute critical blocks for onboarding
+                const isCriticalMissing = !firm.name || !firm.phone;
+                if (isCriticalMissing) {
                     setIsOpen(true);
                 }
             }
@@ -31,11 +35,12 @@ const OnboardingModal: React.FC = () => {
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!formData.name || !formData.address || !formData.phone) {
-            alert("Please fill in at least the Firm Name, Address, and Phone.");
+        if (!formData.name || !formData.phone) {
+            alert("Please fill in at least the Firm Name and Phone.");
             return;
         }
         await setFirm(formData);
+        sessionStorage.setItem('onboarding_dismissed', 'true');
         setIsOpen(false);
     };
 

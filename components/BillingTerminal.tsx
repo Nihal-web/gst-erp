@@ -3,7 +3,7 @@ import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 import { Customer, Product, InvoiceItem, Invoice, InvoiceType } from '../types';
 import InvoiceView from './InvoiceView';
-import { formatCurrency } from '../utils/helpers';
+import { formatCurrency, preciseRound, calculateGST } from '../utils/helpers';
 import { createInvoice, fetchProducts, uploadInvoicePDF } from '../services/apiService';
 import { fetchHSNDetails } from '../services/geminiService';
 import { generateEWayBillJSON, validateGSTIN } from '../utils/ewayBill';
@@ -246,54 +246,48 @@ const BillingTerminal: React.FC = () => {
     }
 
     const totalTaxable = items.reduce((sum, item) => sum + item.taxableValue, 0);
-    const isInterState = selectedCustomer.stateCode !== firm.gstin.substring(0, 2) || invoiceType === InvoiceType.EXPORT;
+    const isInterState = selectedCustomer.stateCode !== (firm.stateCode || firm.gstin.substring(0, 2)) || invoiceType === InvoiceType.EXPORT;
 
-    let totalIgst = 0, totalCgst = 0, totalSgst = 0;
+    // Calculate detailed taxes for each item
+    const itemsWithTax = items.map(item => {
+      const { igst, cgst, sgst } = calculateGST(item.taxableValue, item.gstPercent, isInterState);
+      return {
+        ...item,
+        igst: (invoiceType === InvoiceType.EXPORT && exportType === 'WITHOUT_PAYMENT') ? 0 : igst,
+        cgst: (invoiceType === InvoiceType.EXPORT && exportType === 'WITHOUT_PAYMENT') ? 0 : cgst,
+        sgst: (invoiceType === InvoiceType.EXPORT && exportType === 'WITHOUT_PAYMENT') ? 0 : sgst,
+      };
+    });
 
-    // Calculate GST per item (line-item wise calculation)
-    if (invoiceType === InvoiceType.EXPORT && exportType === 'WITHOUT_PAYMENT') {
-      // No tax - all taxes remain 0
-    } else if (isInterState) {
-      // Inter-state: Apply IGST
-      totalIgst = items.reduce((sum, item) => {
-        const gstAmount = item.taxableValue * (item.gstPercent / 100);
-        return sum + Math.round(gstAmount * 100) / 100; // Round to 2 decimal places
-      }, 0);
-    } else {
-      // Intra-state: Apply CGST + SGST (each half of GST rate)
-      const cgstSgstAmounts = items.reduce((acc, item) => {
-        const gstRate = item.gstPercent / 100;
-        const cgstAmount = item.taxableValue * (gstRate / 2);
-        const sgstAmount = item.taxableValue * (gstRate / 2);
+    // Sum up totals from line items
+    let totalIgst = itemsWithTax.reduce((sum, item) => preciseRound(sum + (item.igst || 0)), 0);
+    let totalCgst = itemsWithTax.reduce((sum, item) => preciseRound(sum + (item.cgst || 0)), 0);
+    let totalSgst = itemsWithTax.reduce((sum, item) => preciseRound(sum + (item.sgst || 0)), 0);
 
-        // Round each tax component to 2 decimal places
-        acc.cgst += Math.round(cgstAmount * 100) / 100;
-        acc.sgst += Math.round(sgstAmount * 100) / 100;
-        return acc;
-      }, { cgst: 0, sgst: 0 });
+    // Final Grand Total Rounding (Math.round for nearest rupee)
+    const exactTotal = preciseRound(totalTaxable + totalIgst + totalCgst + totalSgst);
+    const roundedTotal = Math.round(exactTotal);
+    const roundingDiff = preciseRound(roundedTotal - exactTotal);
 
-      totalCgst = cgstSgstAmounts.cgst;
-      totalSgst = cgstSgstAmounts.sgst;
-    }
-
-    // Apply GST rounding rule: round to nearest rupee (0.50+ goes up)
-    const totalGst = totalIgst + totalCgst + totalSgst;
-    const roundedTotalGst = Math.round(totalGst);
-
-    // Adjust the difference to maintain tax proportions
-    const roundingDiff = roundedTotalGst - totalGst;
-    if (roundingDiff !== 0) {
+    // If there's a rounding difference, adjust the tax components and the LAST item
+    if (roundingDiff !== 0 && itemsWithTax.length > 0) {
+      const lastIdx = itemsWithTax.length - 1;
       if (isInterState) {
-        totalIgst += roundingDiff;
+        totalIgst = preciseRound(totalIgst + roundingDiff);
+        itemsWithTax[lastIdx].igst = preciseRound((itemsWithTax[lastIdx].igst || 0) + roundingDiff);
       } else {
-        // Split rounding difference between CGST and SGST
-        const halfDiff = roundingDiff / 2;
-        totalCgst += halfDiff;
-        totalSgst += halfDiff;
+        const halfDiff = preciseRound(roundingDiff / 2);
+        const secondHalf = preciseRound(roundingDiff - halfDiff);
+
+        totalCgst = preciseRound(totalCgst + halfDiff);
+        totalSgst = preciseRound(totalSgst + secondHalf);
+
+        itemsWithTax[lastIdx].cgst = preciseRound((itemsWithTax[lastIdx].cgst || 0) + halfDiff);
+        itemsWithTax[lastIdx].sgst = preciseRound((itemsWithTax[lastIdx].sgst || 0) + secondHalf);
       }
     }
 
-    const totalAmount = totalTaxable + roundedTotalGst;
+    const totalAmount = roundedTotal;
 
     const currentYear = new Date().getFullYear();
     const typePrefix = invoiceType.charAt(0).toUpperCase();
@@ -307,7 +301,7 @@ const BillingTerminal: React.FC = () => {
       invoiceNo: generatedInvoiceNo,
       date: new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' }),
       customer: selectedCustomer,
-      items: items,
+      items: itemsWithTax,
       totalTaxable,
       igst: totalIgst || undefined,
       cgst: totalCgst || undefined,
@@ -321,42 +315,46 @@ const BillingTerminal: React.FC = () => {
     };
 
     addInvoice(invoice);
-    logActivity(firm.email || 'admin', 'CREATE INVOICE', `Generated Invoice ${generatedInvoiceNo} for ₹${totalAmount}`);
+    logActivity(firm.email || 'admin', 'CREATE INVOICE', `Generated Invoice ${generatedInvoiceNo} for ₹${totalAmount}`, user?.id);
     setInvoiceData(invoice);
     setShowInvoice(true);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const generateInvoicePDF = async (): Promise<Blob | null> => {
-    const invoiceElement = document.querySelector('.invoice-container') as HTMLElement;
-    if (!invoiceElement) {
-      showAlert("Could not find invoice to generate PDF.", "error");
-      return null;
-    }
-
+    let tempContainer: HTMLDivElement | null = null;
     try {
-      showAlert("Preparing document...", "info");
-      await new Promise(resolve => setTimeout(resolve, 500));
+      showAlert("Preparing high-quality document...", "info");
+
+      const invoiceElement = document.getElementById('invoice-capture-area');
+      if (!invoiceElement) {
+        showAlert("Reference lost. Please refresh and try again.", "error");
+        return null;
+      }
 
       const A4_PIXEL_WIDTH = 794;
       const A4_PIXEL_HEIGHT = 1123;
 
-      const tempContainer = document.createElement('div');
+      tempContainer = document.createElement('div');
       tempContainer.style.position = 'fixed';
       tempContainer.style.top = '0';
       tempContainer.style.left = '0';
       tempContainer.style.width = `${A4_PIXEL_WIDTH}px`;
       tempContainer.style.minHeight = `${A4_PIXEL_HEIGHT}px`;
-      tempContainer.style.zIndex = '-9999';
       tempContainer.style.background = '#ffffff';
+      tempContainer.style.opacity = '1';
+      tempContainer.style.visibility = 'visible';
+      tempContainer.style.zIndex = '-9999'; // Stay behind everything but still "visible"
       document.body.appendChild(tempContainer);
 
-      if (invoiceElement.parentElement) {
-        const styleTag = invoiceElement.parentElement.querySelector('style');
-        if (styleTag) {
-          tempContainer.appendChild(styleTag.cloneNode(true));
-        }
-      }
+      // Wait for layout to settle in the NEW container
+      await new Promise(resolve => setTimeout(resolve, 800));
+
+      // Clone all head styles to ensure Tailwind 4 variables and global styles are available in the temp container
+      const allStyles = document.head.querySelectorAll('style, link[rel="stylesheet"]');
+      allStyles.forEach(style => {
+        tempContainer.appendChild(style.cloneNode(true));
+      });
 
       const clonedInvoice = invoiceElement.cloneNode(true) as HTMLElement;
       clonedInvoice.className = 'invoice-container';
@@ -378,9 +376,9 @@ const BillingTerminal: React.FC = () => {
         backgroundColor: '#ffffff',
         width: A4_PIXEL_WIDTH,
         windowWidth: A4_PIXEL_WIDTH,
+        scrollX: 0,
+        scrollY: 0,
       });
-
-      document.body.removeChild(tempContainer);
 
       const imgData = canvas.toDataURL('image/jpeg', 0.98);
       const pdf = new jsPDF({
@@ -417,6 +415,10 @@ const BillingTerminal: React.FC = () => {
       console.error("PDF Generation Error:", error);
       showAlert("PDF error. Try using the browser print option (Ctrl+P).", "error");
       return null;
+    } finally {
+      if (tempContainer && document.body.contains(tempContainer)) {
+        document.body.removeChild(tempContainer);
+      }
     }
   };
 
@@ -515,7 +517,7 @@ const BillingTerminal: React.FC = () => {
         {/* PDF Preview Area - Styled like a document viewer */}
         <div className="flex justify-center bg-slate-800/90 rounded-3xl p-4 lg:p-10 overflow-auto max-h-[80vh] border border-slate-700 shadow-inner scrollbar-thin scrollbar-thumb-slate-600 scrollbar-track-transparent backdrop-blur-sm">
           <div className="relative shadow-2xl shadow-black/50 print:shadow-none transition-transform duration-300 ease-out origin-top scale-[0.4] sm:scale-[0.55] md:scale-[0.7] lg:scale-90 xl:scale-100">
-            <div className="invoice-wrapper bg-white" style={{ width: '210mm' }}>
+            <div id="invoice-capture-area" className="invoice-wrapper bg-white" style={{ width: '210mm' }}>
               <InvoiceView invoice={invoiceData} firm={displayFirm} />
             </div>
           </div>
@@ -556,28 +558,21 @@ const BillingTerminal: React.FC = () => {
 
   const calculateTotalPayable = () => {
     const totalTaxable = items.reduce((sum, item) => sum + item.taxableValue, 0);
-    const isInterState = selectedCustomer ? selectedCustomer.stateCode !== firm.gstin.substring(0, 2) || invoiceType === InvoiceType.EXPORT : false;
+    const isInterState = selectedCustomer ? selectedCustomer.stateCode !== (firm.stateCode || firm.gstin.substring(0, 2)) || invoiceType === InvoiceType.EXPORT : false;
 
     if (invoiceType === InvoiceType.EXPORT && exportType === 'WITHOUT_PAYMENT') {
       return totalTaxable;
     }
 
-    let totalGst = 0;
-    if (isInterState) {
-      totalGst = items.reduce((sum, item) => {
-        const gstAmount = item.taxableValue * (item.gstPercent / 100);
-        return sum + Math.round(gstAmount * 100) / 100;
-      }, 0);
-    } else {
-      totalGst = items.reduce((sum, item) => {
-        const gstRate = item.gstPercent / 100;
-        const cgstAmount = item.taxableValue * (gstRate / 2);
-        const sgstAmount = item.taxableValue * (gstRate / 2);
-        return sum + (Math.round(cgstAmount * 100) / 100) + (Math.round(sgstAmount * 100) / 100);
-      }, 0);
-    }
+    let tIgst = 0, tCgst = 0, tSgst = 0;
+    items.forEach(item => {
+      const { igst, cgst, sgst } = calculateGST(item.taxableValue, item.gstPercent, isInterState);
+      tIgst = preciseRound(tIgst + igst);
+      tCgst = preciseRound(tCgst + cgst);
+      tSgst = preciseRound(tSgst + sgst);
+    });
 
-    return totalTaxable + Math.round(totalGst);
+    return Math.round(preciseRound(totalTaxable + tIgst + tCgst + tSgst));
   };
 
   const totalPayable = calculateTotalPayable();

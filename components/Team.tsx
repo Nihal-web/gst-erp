@@ -66,7 +66,7 @@ const Team: React.FC = () => {
             if (!res.ok) throw new Error(data.error || 'Failed to create user');
 
             setMsg('Team member added successfully!');
-            logActivity(user?.email || 'admin', 'ADD USER', `Invited ${newItem.name} (${newItem.role})`);
+            logActivity(user?.email || 'admin', 'ADD USER', `Invited ${newItem.name} (${newItem.role})`, user?.id);
             setShowModal(false);
             setNewItem({ email: '', password: '', name: '', role: UserRole.SALES });
             fetchMembers();

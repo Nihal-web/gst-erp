@@ -145,7 +145,7 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
             <div className="flex items-center gap-2">
               <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
               <span className="text-[9px] lg:text-[10px] font-black text-slate-400 uppercase tracking-widest truncate max-w-[120px] sm:max-w-none">
-                {user?.role === UserRole.PLATFORM_ADMIN ? 'PLATFORM ACTIVE' : 'SECURE NODE'}
+                {user?.role === UserRole.PLATFORM_ADMIN ? (navItems.find(i => i.to === location.pathname)?.label || 'PLATFORM MASTER') : (navItems.find(i => i.to === location.pathname)?.label || 'SECURE NODE')}
               </span>
             </div>
           </div>

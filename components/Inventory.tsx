@@ -158,11 +158,11 @@ const Inventory: React.FC = () => {
 
     if (newProduct.id) {
       updateProduct(product);
-      logActivity(user?.email || 'System', 'UPDATE PRODUCT', `Updated details for ${product.name}`);
+      logActivity(user?.email || 'System', 'UPDATE PRODUCT', `Updated details for ${product.name}`, user?.id);
       showAlert("Product updated successfully!", "success");
     } else {
       addProduct(product);
-      logActivity(user?.email || 'System', 'CREATE PRODUCT', `Added ${product.name} to inventory`);
+      logActivity(user?.email || 'System', 'CREATE PRODUCT', `Added ${product.name} to inventory`, user?.id);
     }
 
     setShowAddModal(false);
@@ -282,7 +282,7 @@ const Inventory: React.FC = () => {
                           <button onClick={() => setShowAdjustModal(product)} className="px-3 py-1.5 bg-slate-100 text-slate-600 text-[10px] font-black rounded-lg hover:bg-slate-200">Adjust</button>
                           <button onClick={() => {
                             deleteProduct(product.id);
-                            logActivity(user?.email || 'System', 'DELETE PRODUCT', `Removed ${product.name} from inventory`);
+                            logActivity(user?.email || 'System', 'DELETE PRODUCT', `Removed ${product.name} from inventory`, user?.id);
                           }} className="px-3 py-1.5 bg-red-50 text-red-600 text-[10px] font-black rounded-lg hover:bg-red-100">Delete</button>
                         </div>
                       </td>

@@ -55,9 +55,18 @@ class GSTRService {
                 return; // No invoices to process
             }
 
+            // Fetch base state code for the tenant
+            const { data: firm } = await supabase
+                .from('firm_settings')
+                .select('state_code')
+                .eq('tenant_id', tenantId)
+                .single();
+
+            const baseStateCode = firm?.state_code || '24'; // Default to Gujarat if not set
+
             // Process each invoice
             for (const invoice of invoices) {
-                await this.processInvoiceForGSTR1(gstr1Return.id, invoice);
+                await this.processInvoiceForGSTR1(gstr1Return.id, invoice, baseStateCode);
             }
 
             // Update totals
@@ -72,9 +81,9 @@ class GSTRService {
     /**
      * Process a single invoice for GSTR-1
      */
-    static async processInvoiceForGSTR1(gstr1ReturnId, invoice) {
+    static async processInvoiceForGSTR1(gstr1ReturnId, invoice, baseStateCode) {
         const customer = invoice.customers;
-        const isIntraState = customer.state_code === '24'; // Assuming Gujarat as base state, adjust as needed
+        const isIntraState = customer.state_code === baseStateCode;
         const isRegistered = customer.gstin && customer.gstin.length > 0;
 
         // Calculate taxes

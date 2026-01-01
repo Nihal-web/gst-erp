@@ -98,6 +98,9 @@ export interface InvoiceItem {
   unit: string;
   taxableValue: number;
   gstPercent: number;
+  igst?: number;
+  cgst?: number;
+  sgst?: number;
   conversionFactor?: number; // Conversion factor for packaging units (e.g. 10 for 10KG Box)
 }
 

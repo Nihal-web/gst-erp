@@ -2,7 +2,7 @@
 export function numberToWords(num: number): string {
   const ones = ['', 'ONE', 'TWO', 'THREE', 'FOUR', 'FIVE', 'SIX', 'SEVEN', 'EIGHT', 'NINE', 'TEN', 'ELEVEN', 'TWELVE', 'THIRTEEN', 'FOURTEEN', 'FIFTEEN', 'SIXTEEN', 'SEVENTEEN', 'EIGHTEEN', 'NINETEEN'];
   const tens = ['', '', 'TWENTY', 'THIRTY', 'FORTY', 'FIFTY', 'SIXTY', 'SEVENTY', 'EIGHTY', 'NINETY'];
-  
+
   const convert = (n: number): string => {
     if (n < 20) return ones[n];
     if (n < 100) return tens[Math.floor(n / 10)] + (n % 10 !== 0 ? ' ' + ones[n % 10] : '');
@@ -14,7 +14,7 @@ export function numberToWords(num: number): string {
 
   const whole = Math.floor(num);
   const fraction = Math.round((num - whole) * 100);
-  
+
   let result = convert(whole) + ' RUPEES';
   if (fraction > 0) {
     result += ' AND ' + convert(fraction) + ' PAISA';
@@ -32,4 +32,27 @@ export function formatCurrency(num: number): string {
 export function generateUPILink(vpa: string, name: string, amount: number, tr: string): string {
   const encodedName = encodeURIComponent(name);
   return `upi://pay?pa=${vpa}&pn=${encodedName}&am=${amount}&tr=${tr}&cu=INR`;
+}
+
+/**
+ * Rounds a number to a specific number of decimal places accurately.
+ */
+export function preciseRound(num: number, decimals: number = 2): number {
+  const factor = Math.pow(10, decimals);
+  return Math.round((num + Number.EPSILON) * factor) / factor;
+}
+
+/**
+ * Unified GST calculation to ensure CGST/SGST are always identical.
+ */
+export function calculateGST(taxableValue: number, gstRate: number, isInterState: boolean) {
+  if (isInterState) {
+    const igst = preciseRound(taxableValue * (gstRate / 100));
+    return { igst, cgst: 0, sgst: 0, totalTax: igst };
+  } else {
+    // For intra-state, we calculate half for CGST/SGST
+    // We round EACH half to 2 decimals to ensure they sum up correctly to a valid currency value
+    const taxHalf = preciseRound(taxableValue * (gstRate / 200));
+    return { igst: 0, cgst: taxHalf, sgst: taxHalf, totalTax: taxHalf * 2 };
+  }
 }

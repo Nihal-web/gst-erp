@@ -2,37 +2,24 @@ import { supabase } from '../supabaseClient';
 
 export interface AuditLog {
     id: string;
+    tenant_id?: string;
     user_email: string;
     action: string;
     details: string;
-    timestamp: string;
+    timestamp: string; // Map from created_at in DB
 }
 
-export const logActivity = async (userEmail: string, action: string, details: string) => {
+export const logActivity = async (userEmail: string, action: string, details: string, tenantId?: string) => {
     try {
-        // In a real app with RLS, we'd insert to a table.
-        // For this MVP, we will try to insert if the table exists, otherwise just console log
-        // and potentially store in localStorage for a demo "local" audit log if DB fails.
-
-        /* 
-          Table Schema needed:
-          create table activity_logs (
-            id uuid default uuid_generate_v4() primary key,
-            user_email text,
-            action text,
-            details text,
-            timestamp timestamptz default now()
-          );
-        */
+        const payload: any = { user_email: userEmail, action, details };
+        if (tenantId) payload.tenant_id = tenantId;
 
         const { error } = await supabase
             .from('activity_logs')
-            .insert([
-                { user_email: userEmail, action, details }
-            ]);
+            .insert([payload]);
 
         if (error) {
-            console.warn("Audit Log DB Insert Failed (Table might be missing):", error.message);
+            console.warn("Audit Log DB Insert Failed:", error.message);
             // Fallback for Demo: Store in LocalStorage
             const currentLogs = JSON.parse(localStorage.getItem('local_audit_logs') || '[]');
             currentLogs.unshift({
@@ -53,13 +40,15 @@ export const fetchAuditLogs = async (): Promise<AuditLog[]> => {
     // Try DB first
     const { data, error } = await supabase
         .from('activity_logs')
-        .select('*')
-        .order('timestamp', { ascending: false })
-        .limit(50);
+        .select('id, tenant_id, user_email, action, details, timestamp:created_at')
+        .order('created_at', { ascending: false })
+        .limit(100);
 
     if (!error && data) {
-        return data;
+        return data as unknown as AuditLog[];
     }
+
+    console.warn("Audit logs fetch error:", error);
 
     // Fallback to local storage
     return JSON.parse(localStorage.getItem('local_audit_logs') || '[]');

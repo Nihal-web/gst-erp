@@ -272,17 +272,34 @@ router.post('/invoices', async (req, res) => {
         );
 
         for (const item of items) {
+            const deduction = item.conversionFactor ? (item.qty * item.conversionFactor) : item.qty;
+
+            // 1. Insert Invoice Item
             await connection.query(`
                 INSERT INTO invoice_items (
-                    invoice_id, product_id, product_name, hsn, sac, qty, rate, unit, taxable_value, gst_percent
-                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+                    invoice_id, product_id, product_name, hsn, sac, qty, rate, unit, taxable_value, gst_percent, igst, cgst, sgst, conversion_factor
+                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
                 [
                     invId, item.productId || null, item.productName, item.hsn || null, item.sac || null,
-                    item.qty, item.rate, item.unit, item.taxableValue, item.gstPercent
+                    item.qty, item.rate, item.unit, item.taxableValue, item.gstPercent,
+                    item.igst || 0, item.cgst || 0, item.sgst || 0, item.conversionFactor || 1
                 ]
             );
 
-            // Note: Stock update is handled by frontend to account for conversion factors
+            // 2. Atomic Stock Update
+            if (item.productId) {
+                await connection.query(
+                    'UPDATE inventory SET stock = stock - $1 WHERE id = $2 AND tenant_id = $3',
+                    [deduction, item.productId, req.tenantId]
+                );
+
+                // 3. Log Stock Movement
+                await connection.query(`
+                    INSERT INTO stock_logs (id, tenant_id, product_id, product_name, change_amt, reason, date)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+                    [crypto.randomUUID(), req.tenantId, item.productId, item.productName, -deduction, `Invoice ${inv.invoiceNo}`, new Date().toLocaleString()]
+                );
+            }
         }
 
         await connection.commit();

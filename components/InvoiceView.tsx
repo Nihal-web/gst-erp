@@ -328,6 +328,68 @@ const InvoiceView: React.FC<Props> = ({ invoice, firm }) => {
                         <p className="font-bold italic mt-1 capitalize">{numberToWords(invoice.totalAmount)} only</p>
                       </div>
 
+                      {/* Detailed Tax Summary Table (HSN/SAC Wise) */}
+                      {totalTax > 0 && (
+                        <div className="p-2 border-b-black">
+                          <p className="text-[8px] font-black uppercase tracking-widest text-slate-400 mb-2">GST Tax Summary</p>
+                          <table className="w-full text-[8px] border-collapse border border-slate-200">
+                            <thead>
+                              <tr className="bg-slate-50 font-bold border-b border-slate-200">
+                                <th className="p-1 text-left border-r border-slate-200">HSN/SAC</th>
+                                <th className="p-1 text-right border-r border-slate-200">Taxable Val.</th>
+                                {isInterState ? (
+                                  <>
+                                    <th className="p-1 text-right border-r border-slate-200">IGST %</th>
+                                    <th className="p-1 text-right">IGST Amt</th>
+                                  </>
+                                ) : (
+                                  <>
+                                    <th className="p-1 text-right border-r border-slate-200">CGST %</th>
+                                    <th className="p-1 text-right border-r border-slate-200">CGST Amt</th>
+                                    <th className="p-1 text-right border-r border-slate-200">SGST %</th>
+                                    <th className="p-1 text-right">SGST Amt</th>
+                                  </>
+                                )}
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {/* Group items by HSN and GST percentage */}
+                              {Object.values(invoice.items.reduce((acc: any, item) => {
+                                const key = `${item.hsn || item.sac}-${item.gstPercent}`;
+                                if (!acc[key]) {
+                                  acc[key] = { hsn: item.hsn || item.sac, taxable: 0, rate: item.gstPercent, igst: 0, cgst: 0, sgst: 0 };
+                                }
+                                acc[key].taxable = (acc[key].taxable || 0) + item.taxableValue;
+                                acc[key].igst = (acc[key].igst || 0) + (item.igst || 0);
+                                acc[key].cgst = (acc[key].cgst || 0) + (item.cgst || 0);
+                                acc[key].sgst = (acc[key].sgst || 0) + (item.sgst || 0);
+                                return acc;
+                              }, {})).map((group: any, idx) => {
+                                return (
+                                  <tr key={idx} className="border-b border-slate-100 last:border-0">
+                                    <td className="p-1 border-r border-slate-200">{group.hsn}</td>
+                                    <td className="p-1 text-right border-r border-slate-200">{formatCurrency(group.taxable)}</td>
+                                    {isInterState ? (
+                                      <>
+                                        <td className="p-1 text-right border-r border-slate-200">{group.rate}%</td>
+                                        <td className="p-1 text-right font-bold">{formatCurrency(group.igst)}</td>
+                                      </>
+                                    ) : (
+                                      <>
+                                        <td className="p-1 text-right border-r border-slate-200">{group.rate / 2}%</td>
+                                        <td className="p-1 text-right border-r border-slate-200">{formatCurrency(group.cgst)}</td>
+                                        <td className="p-1 text-right border-r border-slate-200">{group.rate / 2}%</td>
+                                        <td className="p-1 text-right font-bold">{formatCurrency(group.sgst)}</td>
+                                      </>
+                                    )}
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+
                       {/* Tax Breakup / Terms Grid */}
                       <div className="grid grid-cols-2 flex-grow">
                         <div className="p-2 border-r-black">
@@ -384,10 +446,34 @@ const InvoiceView: React.FC<Props> = ({ invoice, firm }) => {
                         <span>Taxable Amount</span>
                         <span className="font-bold">{formatCurrency(invoice.totalTaxable)}</span>
                       </div>
-                      <div className="flex justify-between p-1 px-2 border-b-std-gray">
-                        <span>Total Tax</span>
-                        <span className="font-bold">{formatCurrency(totalTax)}</span>
-                      </div>
+                      {/* Tax Breakdown */}
+                      {invoice.cgst !== undefined && invoice.cgst > 0 && (
+                        <div className="flex justify-between p-1 px-2 border-b-std-gray">
+                          <span>CGST</span>
+                          <span className="font-bold">{formatCurrency(invoice.cgst)}</span>
+                        </div>
+                      )}
+                      {invoice.sgst !== undefined && invoice.sgst > 0 && (
+                        <div className="flex justify-between p-1 px-2 border-b-std-gray">
+                          <span>SGST</span>
+                          <span className="font-bold">{formatCurrency(invoice.sgst)}</span>
+                        </div>
+                      )}
+                      {invoice.igst !== undefined && invoice.igst > 0 && (
+                        <div className="flex justify-between p-1 px-2 border-b-std-gray">
+                          <span>IGST</span>
+                          <span className="font-bold">{formatCurrency(invoice.igst)}</span>
+                        </div>
+                      )}
+
+                      {/* Fallback if for some reason breakdown isn't provided but tax exists */}
+                      {(!invoice.cgst && !invoice.sgst && !invoice.igst && totalTax > 0) && (
+                        <div className="flex justify-between p-1 px-2 border-b-std-gray">
+                          <span>Total Tax</span>
+                          <span className="font-bold">{formatCurrency(totalTax)}</span>
+                        </div>
+                      )}
+
                       <div className="flex justify-between p-1 px-2 border-b-std-gray">
                         <span>Discount</span>
                         <span className="font-bold">{formatCurrency(totalDiscount)}</span>

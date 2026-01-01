@@ -1,5 +1,6 @@
 const { Pool } = require('pg');
-require('dotenv').config();
+const path = require('path');
+require('dotenv').config({ path: path.join(__dirname, '../.env.local') });
 
 // Use DATABASE_URL from Supabase (set this in Render environment variables)
 // Example: postgres://postgres:password@db.host.supabase.co:5432/postgres
